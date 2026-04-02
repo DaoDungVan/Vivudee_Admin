@@ -132,7 +132,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 2 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            <div className="responsive-two-col" style={{ marginBottom: 20 }}>
 
               {/* Booking Summary */}
               <div className="card">
@@ -183,7 +183,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Row 3 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            <div className="responsive-two-col">
 
               {/* Popular flights */}
               <div className="card">
