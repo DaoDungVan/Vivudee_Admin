@@ -166,7 +166,7 @@ export default function BookingsPage() {
                   ))}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+                <div className="detail-grid">
                   {[
                     ['Mã booking',    detail.booking_code || `#${detail.id}`],
                     ['Trạng thái',    STATUS_LABEL[detail.status] || detail.status],
@@ -184,9 +184,9 @@ export default function BookingsPage() {
                     ['Giữ đến',      detail.held_until ? new Date(detail.held_until).toLocaleString('vi-VN') : '—'],
                     ['Ngày đặt',     detail.created_at ? new Date(detail.created_at).toLocaleString('vi-VN') : '—'],
                   ].map(([k, v]) => (
-                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>{k}</span>
-                      <span style={{ fontWeight: 500, textAlign: 'right', maxWidth: 200, wordBreak: 'break-word' }}>{String(v)}</span>
+                    <div key={k} className="detail-row">
+                      <span className="detail-row-label">{k}</span>
+                      <span className="detail-row-value">{String(v)}</span>
                     </div>
                   ))}
                 </div>

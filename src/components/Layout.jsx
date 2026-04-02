@@ -1,4 +1,5 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import LogoNav from '../assets/imgs/LogoNav.svg'
 
@@ -15,13 +16,45 @@ const navItems = [
 export default function Layout() {
   const { user, signout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const handleLogout = () => { signout(); navigate('/login') }
 
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 1024) setMobileNavOpen(false)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
+    document.body.classList.toggle('sidebar-open', mobileNavOpen)
+    return () => document.body.classList.remove('sidebar-open')
+  }, [mobileNavOpen])
+
   return (
     <div className="app-layout">
+      <button
+        type="button"
+        className="mobile-nav-toggle"
+        aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={mobileNavOpen}
+        onClick={() => setMobileNavOpen(open => !open)}
+      >
+        {mobileNavOpen ? '✕' : '☰'}
+      </button>
+
+      {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Close menu overlay" onClick={() => setMobileNavOpen(false)} />}
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar${mobileNavOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
           <img src={LogoNav} alt="VivuDee"/>
         </div>
@@ -34,6 +67,7 @@ export default function Layout() {
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+              onClick={() => setMobileNavOpen(false)}
             >
               <span className="nav-icon">{item.icon}</span>
               {item.label}
