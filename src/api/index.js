@@ -14,14 +14,7 @@ api.interceptors.request.use(cfg => {
 // Auto-logout on 401
 api.interceptors.response.use(
   res => res,
-  err => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
-    }
-    return Promise.reject(err)
-  }
+  err => Promise.reject(err)
 )
 
 // ─── Auth ──────────────────────────────────────────────────────────────────

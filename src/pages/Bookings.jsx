@@ -1,5 +1,24 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getBookings, getBookingById, updateBookingStatus } from '../api'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+
+const SEARCH_FETCH_LIMIT = 500
+
+const matchesBookingSearch = (booking, keyword) => {
+  const q = keyword.toLowerCase()
+  return [
+    booking.id,
+    booking.booking_code,
+    booking.contact_name,
+    booking.contact_email,
+    booking.contact_phone,
+    booking.outbound_flight,
+    booking.from_code,
+    booking.to_code,
+    booking.from_city,
+    booking.to_city,
+  ].some(value => String(value || '').toLowerCase().includes(q))
+}
 
 const BOOKING_STATUSES = ['pending', 'confirmed', 'cancelled', 'expired']
 const STATUS_BADGE = { pending: 'badge-warning', confirmed: 'badge-success', cancelled: 'badge-danger', expired: 'badge-muted', refunded: 'badge-muted' }
@@ -20,17 +39,48 @@ export default function BookingsPage() {
   const [search, setSearch]         = useState('')
   const [detail, setDetail]         = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const requestIdRef                = useRef(0)
+  const debouncedSearch             = useDebouncedValue(search)
 
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current
+    const keyword = debouncedSearch.trim()
+    const searching = keyword.length > 0
+
     setLoading(true)
-    getBookings({ page, limit, status: filterStatus || undefined, search: search || undefined })
+    getBookings({
+      page: searching ? 1 : page,
+      limit: searching ? SEARCH_FETCH_LIMIT : limit,
+      status: filterStatus || undefined,
+    })
       .then(r => {
+        if (requestId !== requestIdRef.current) return
         const d = r.data
-        setData(d.data || [])
+        const items = d.data || []
+
+        if (searching) {
+          const filtered = items.filter(item => matchesBookingSearch(item, keyword))
+          const total = filtered.length
+          const totalPages = Math.max(1, Math.ceil(total / limit))
+          const safePage = Math.min(page, totalPages)
+
+          setData(filtered.slice((safePage - 1) * limit, safePage * limit))
+          setPagination({ total, total_pages: totalPages, page: safePage })
+
+          if (safePage !== page) setPage(safePage)
+          return
+        }
+
+        setData(items)
         setPagination(d.pagination || { total: 0, total_pages: 1 })
       })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [page, limit, filterStatus, search])
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false)
+      })
+  }, [page, limit, filterStatus, debouncedSearch])
 
   useEffect(() => { load() }, [load])
 

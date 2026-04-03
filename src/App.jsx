@@ -11,19 +11,19 @@ import BookingsPage from './pages/Bookings'
 import CouponsPage from './pages/Coupons'
 
 function PrivateRoute({ children }) {
-  const { token, user, signout } = useAuth()
+  const { token, user } = useAuth()
+
   if (!token) return <Navigate to="/login" replace />
-  if (user && user.role !== 'admin') {
-    signout()           // xoá token trước khi redirect → phá vòng lặp
-    return <Navigate to="/login" replace />
-  }
+  if (user && user.role !== 'admin') return <Navigate to="/login" replace />
+
   return children
 }
 
 function PublicRoute({ children }) {
   const { token, user } = useAuth()
-  // Chỉ redirect khi đã xác nhận là admin, tránh loop khi token tồn tại nhưng role sai
+
   if (token && user?.role === 'admin') return <Navigate to="/" replace />
+
   return children
 }
 

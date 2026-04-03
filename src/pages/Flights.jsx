@@ -1,5 +1,25 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getFlights, createFlight, updateFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines } from '../api'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+
+const SEARCH_FETCH_LIMIT = 500
+
+const matchesFlightSearch = (flight, keyword) => {
+  const q = keyword.toLowerCase()
+  return [
+    flight.flight_number,
+    flight.airline_name,
+    flight.airline_code,
+    flight.departure_code,
+    flight.arrival_code,
+    flight.dep_code,
+    flight.arr_code,
+    flight.from_city,
+    flight.to_city,
+    flight.departure_city,
+    flight.arrival_city,
+  ].some(value => String(value || '').toLowerCase().includes(q))
+}
 
 const STATUS_LABELS = {
   scheduled: { label: 'Đã lên lịch', cls: 'badge-info' },
@@ -31,24 +51,49 @@ export default function FlightsPage() {
   const [error, setError]           = useState('')
   const [airports, setAirports]     = useState([])
   const [airlines, setAirlines]     = useState([])
+  const requestIdRef                = useRef(0)
+  const debouncedSearch             = useDebouncedValue(search)
 
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current
+    const keyword = debouncedSearch.trim()
+    const searching = keyword.length > 0
+
     setLoading(true)
     getFlights({
-      page, limit,
-      flight_number: search || undefined,
+      page: searching ? 1 : page,
+      limit: searching ? SEARCH_FETCH_LIMIT : limit,
       status:        filterStatus || undefined,
       show_hidden:   showHidden ? true : undefined,
     })
       .then(r => {
+        if (requestId !== requestIdRef.current) return
         const d = r.data
-        // Response: { message, data: [...], pagination: { total, page, limit, total_pages } }
-        setFlights(d.data || [])
+        const items = d.data || []
+
+        if (searching) {
+          const filtered = items.filter(item => matchesFlightSearch(item, keyword))
+          const total = filtered.length
+          const totalPages = Math.max(1, Math.ceil(total / limit))
+          const safePage = Math.min(page, totalPages)
+
+          setFlights(filtered.slice((safePage - 1) * limit, safePage * limit))
+          setPagination({ total, total_pages: totalPages, page: safePage })
+
+          if (safePage !== page) setPage(safePage)
+          return
+        }
+
+        setFlights(items)
         setPagination(d.pagination || { total: 0, total_pages: 1, page: 1 })
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [page, limit, search, filterStatus, showHidden])
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false)
+      })
+  }, [page, limit, debouncedSearch, filterStatus, showHidden])
 
   useEffect(() => { load() }, [load])
 

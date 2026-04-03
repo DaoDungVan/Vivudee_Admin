@@ -1,7 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAirports, createAirport, updateAirport, updateAirportStatus } from '../api'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const empty = { code: '', name: '', city: '', country: 'Vietnam', timezone: 'Asia/Ho_Chi_Minh' }
+const SEARCH_FETCH_LIMIT = 500
+
+const matchesAirportSearch = (airport, keyword) => {
+  const q = keyword.toLowerCase()
+  return [airport.code, airport.name, airport.city, airport.country, airport.timezone]
+    .some(value => String(value || '').toLowerCase().includes(q))
+}
 
 export default function AirportsPage() {
   const [data, setData]           = useState([])
@@ -15,17 +23,47 @@ export default function AirportsPage() {
   const [form, setForm]           = useState(empty)
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState('')
+  const requestIdRef              = useRef(0)
+  const debouncedSearch           = useDebouncedValue(search)
 
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current
+    const keyword = debouncedSearch.trim()
+    const searching = keyword.length > 0
+
     setLoading(true)
-    getAirports({ page, limit, search: search || undefined })
+    getAirports({
+      page: searching ? 1 : page,
+      limit: searching ? SEARCH_FETCH_LIMIT : limit,
+    })
       .then(r => {
+        if (requestId !== requestIdRef.current) return
         const d = r.data
-        setData(d.data || [])
+        const items = d.data || []
+
+        if (searching) {
+          const filtered = items.filter(item => matchesAirportSearch(item, keyword))
+          const total = filtered.length
+          const totalPages = Math.max(1, Math.ceil(total / limit))
+          const safePage = Math.min(page, totalPages)
+
+          setData(filtered.slice((safePage - 1) * limit, safePage * limit))
+          setPagination({ total, total_pages: totalPages, page: safePage })
+
+          if (safePage !== page) setPage(safePage)
+          return
+        }
+
+        setData(items)
         setPagination(d.pagination || { total: 0, total_pages: 1 })
       })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [page, limit, search])
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false)
+      })
+  }, [page, limit, debouncedSearch])
 
   useEffect(() => { load() }, [load])
 

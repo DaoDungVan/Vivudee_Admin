@@ -1,7 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAirlines, createAirline, updateAirline, updateAirlineStatus } from '../api'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const empty = { code: '', name: '', logo_url: '' }
+const SEARCH_FETCH_LIMIT = 500
+
+const matchesAirlineSearch = (airline, keyword) => {
+  const q = keyword.toLowerCase()
+  return [airline.code, airline.name, airline.logo_url]
+    .some(value => String(value || '').toLowerCase().includes(q))
+}
 
 export default function AirlinesPage() {
   const [data, setData]             = useState([])
@@ -15,17 +23,47 @@ export default function AirlinesPage() {
   const [form, setForm]             = useState(empty)
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState('')
+  const requestIdRef                = useRef(0)
+  const debouncedSearch             = useDebouncedValue(search)
 
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current
+    const keyword = debouncedSearch.trim()
+    const searching = keyword.length > 0
+
     setLoading(true)
-    getAirlines({ page, limit, search: search || undefined })
+    getAirlines({
+      page: searching ? 1 : page,
+      limit: searching ? SEARCH_FETCH_LIMIT : limit,
+    })
       .then(r => {
+        if (requestId !== requestIdRef.current) return
         const d = r.data
-        setData(d.data || [])
+        const items = d.data || []
+
+        if (searching) {
+          const filtered = items.filter(item => matchesAirlineSearch(item, keyword))
+          const total = filtered.length
+          const totalPages = Math.max(1, Math.ceil(total / limit))
+          const safePage = Math.min(page, totalPages)
+
+          setData(filtered.slice((safePage - 1) * limit, safePage * limit))
+          setPagination({ total, total_pages: totalPages, page: safePage })
+
+          if (safePage !== page) setPage(safePage)
+          return
+        }
+
+        setData(items)
         setPagination(d.pagination || { total: 0, total_pages: 1 })
       })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [page, limit, search])
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false)
+      })
+  }, [page, limit, debouncedSearch])
 
   useEffect(() => { load() }, [load])
 

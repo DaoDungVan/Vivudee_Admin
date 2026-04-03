@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getCoupons, createCoupon, updateCoupon, deleteCoupon, toggleCoupon } from '../api'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const DISCOUNT_TYPES = ['percentage', 'fixed']
 const DISCOUNT_LABEL = { percentage: 'Phần trăm (%)', fixed: 'Cố định (VNĐ)' }
@@ -7,6 +8,13 @@ const DISCOUNT_LABEL = { percentage: 'Phần trăm (%)', fixed: 'Cố định (V
 const emptyCoupon = {
   code: '', discount_type: 'percentage', discount_value: '',
   min_order_value: '', max_uses: '', expires_at: '', description: '',
+}
+const SEARCH_FETCH_LIMIT = 500
+
+const matchesCouponSearch = (coupon, keyword) => {
+  const q = keyword.toLowerCase()
+  return [coupon.code, coupon.description, coupon.discount_type]
+    .some(value => String(value || '').toLowerCase().includes(q))
 }
 
 const fmtCurrency = (n) =>
@@ -24,18 +32,44 @@ export default function CouponsPage() {
   const [form, setForm]         = useState(emptyCoupon)
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState('')
+  const requestIdRef            = useRef(0)
+  const debouncedSearch         = useDebouncedValue(search)
 
   const load = useCallback(() => {
+    const requestId = ++requestIdRef.current
+    const keyword = debouncedSearch.trim()
+    const searching = keyword.length > 0
+
     setLoading(true)
-    getCoupons({ page, limit, code: search || undefined })
+    getCoupons({ page: searching ? 1 : page, limit: searching ? SEARCH_FETCH_LIMIT : limit })
       .then(r => {
+        if (requestId !== requestIdRef.current) return
         const d = r.data
-        setData(d.data || d.coupons || (Array.isArray(d) ? d : []))
+        const items = d.data || d.coupons || (Array.isArray(d) ? d : [])
+
+        if (searching) {
+          const filtered = items.filter(item => matchesCouponSearch(item, keyword))
+          const total = filtered.length
+          const totalPages = Math.max(1, Math.ceil(total / limit))
+          const safePage = Math.min(page, totalPages)
+
+          setData(filtered.slice((safePage - 1) * limit, safePage * limit))
+          setPagination({ total, total_pages: totalPages, page: safePage })
+
+          if (safePage !== page) setPage(safePage)
+          return
+        }
+
+        setData(items)
         setPagination(d.pagination || { total: 0, total_pages: 1 })
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [page, search])
+      .catch(() => {
+        if (requestId !== requestIdRef.current) return
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false)
+      })
+  }, [page, debouncedSearch])
 
   useEffect(() => { load() }, [load])
 
