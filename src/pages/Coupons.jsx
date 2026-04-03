@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { getCoupons, createCoupon, updateCoupon, deleteCoupon, toggleCoupon } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
-const DISCOUNT_TYPES = ['percentage', 'fixed']
-const DISCOUNT_LABEL = { percentage: 'Phần trăm (%)', fixed: 'Cố định (VNĐ)' }
+const DISCOUNT_TYPES = ['percent', 'fixed']
+const DISCOUNT_LABEL = { percent: 'Phần trăm (%)', fixed: 'Cố định (VNĐ)' }
 
 const emptyCoupon = {
-  code: '', discount_type: 'percentage', discount_value: '',
-  min_order_value: '', max_uses: '', expires_at: '', description: '',
+  code: '', type: 'percent', value: '',
+  min_order: '', usage_limit: '', expiry_at: '', description: '',
 }
 const SEARCH_FETCH_LIMIT = 500
 
@@ -78,29 +78,40 @@ export default function CouponsPage() {
     setEditData(c)
     setForm({
       code: c.code,
-      discount_type: c.discount_type || 'percentage',
-      discount_value: c.discount_value ?? '',
-      min_order_value: c.min_order_value ?? '',
-      max_uses: c.max_uses ?? '',
-      expires_at: c.expires_at ? c.expires_at.slice(0, 10) : '',
+      type: c.type || 'percent',
+      value: c.value ?? '',
+      min_order: c.min_order ?? '',
+      usage_limit: c.usage_limit ?? '',
+      expiry_at: c.expiry_at ? c.expiry_at.slice(0, 10) : '',
       description: c.description || '',
     })
     setError('')
     setModal('edit')
   }
 
+  const sanitizeForm = (f) => ({
+    code: f.code.trim().toUpperCase(),
+    type: f.type,
+    value: f.value !== '' ? Number(f.value) : null,
+    min_order: f.min_order !== '' ? Number(f.min_order) : null,
+    usage_limit: f.usage_limit !== '' ? Number(f.usage_limit) : null,
+    expiry_at: f.expiry_at || null,
+    description: f.description || '',
+  })
+
   const handleSave = async () => {
     setSaving(true); setError('')
     try {
-      if (modal === 'create') await createCoupon(form)
-      else await updateCoupon(editData.id, form)
+      const payload = sanitizeForm(form)
+      if (modal === 'create') await createCoupon(payload)
+      else await updateCoupon(editData.id, payload)
       setModal(null); load()
     } catch (e) { setError(e.response?.data?.error || 'Lỗi khi lưu') }
     finally { setSaving(false) }
   }
 
-  const handleToggle = async (id) => {
-    try { await toggleCoupon(id); load() } catch (e) { alert(e.response?.data?.error || 'Lỗi') }
+  const handleToggle = async (id, isActive) => {
+    try { await toggleCoupon(id, isActive); load() } catch (e) { alert(e.response?.data?.error || 'Lỗi') }
   }
 
   const handleDelete = async (id) => {
@@ -156,20 +167,20 @@ export default function CouponsPage() {
                   {data.map(c => (
                     <tr key={c.id}>
                       <td><span className="td-mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)' }}>{c.code}</span></td>
-                      <td><span className="badge badge-info">{DISCOUNT_LABEL[c.discount_type] || c.discount_type}</span></td>
+                      <td><span className="badge badge-info">{DISCOUNT_LABEL[c.type] || c.type}</span></td>
                       <td style={{ fontWeight: 600 }}>
-                        {c.discount_type === 'percentage'
-                          ? `${c.discount_value}%`
-                          : fmtCurrency(c.discount_value)}
+                        {c.type === 'percent'
+                          ? `${c.value}%`
+                          : fmtCurrency(c.value)}
                       </td>
-                      <td>{c.min_order_value ? fmtCurrency(c.min_order_value) : '—'}</td>
+                      <td>{c.min_order ? fmtCurrency(c.min_order) : '—'}</td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                          {c.used_count ?? 0} / {c.max_uses ?? '∞'}
+                          {c.used_count ?? 0} / {c.usage_limit ?? '∞'}
                         </span>
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {c.expires_at ? new Date(c.expires_at).toLocaleDateString('vi-VN') : '—'}
+                        {c.expiry_at ? new Date(c.expiry_at).toLocaleDateString('vi-VN') : '—'}
                       </td>
                       <td>
                         <span className={`badge ${c.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
@@ -182,7 +193,7 @@ export default function CouponsPage() {
                           <button
                             className="btn btn-sm"
                             style={{ background: c.is_active !== false ? 'var(--warning-bg)' : 'var(--success-bg)', color: c.is_active !== false ? 'var(--warning)' : 'var(--success)', border: '1px solid currentColor' }}
-                            onClick={() => handleToggle(c.id)}
+                            onClick={() => handleToggle(c.id, c.is_active)}
                           >
                             {c.is_active !== false ? '🚫' : '✓'}
                           </button>
@@ -229,26 +240,26 @@ export default function CouponsPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">Loại giảm giá *</label>
-                <select className="form-control" value={form.discount_type} onChange={e => setField('discount_type', e.target.value)}>
+                <select className="form-control" value={form.type} onChange={e => setField('type', e.target.value)}>
                   {DISCOUNT_TYPES.map(t => <option key={t} value={t}>{DISCOUNT_LABEL[t]}</option>)}
                 </select>
               </div>
               <div className="form-group">
                 <label className="form-label">Giá trị giảm *</label>
-                <input className="form-control" type="number" value={form.discount_value} onChange={e => setField('discount_value', e.target.value)}
-                  placeholder={form.discount_type === 'percentage' ? '20 (%)' : '50000 (VNĐ)'} />
+                <input className="form-control" type="number" value={form.value} onChange={e => setField('value', e.target.value)}
+                  placeholder={form.type === 'percent' ? '20 (%)' : '50000 (VNĐ)'} />
               </div>
               <div className="form-group">
                 <label className="form-label">Đơn hàng tối thiểu (VNĐ)</label>
-                <input className="form-control" type="number" value={form.min_order_value} onChange={e => setField('min_order_value', e.target.value)} placeholder="500000" />
+                <input className="form-control" type="number" value={form.min_order} onChange={e => setField('min_order', e.target.value)} placeholder="500000" />
               </div>
               <div className="form-group">
                 <label className="form-label">Số lần dùng tối đa</label>
-                <input className="form-control" type="number" value={form.max_uses} onChange={e => setField('max_uses', e.target.value)} placeholder="100" />
+                <input className="form-control" type="number" value={form.usage_limit} onChange={e => setField('usage_limit', e.target.value)} placeholder="100" />
               </div>
               <div className="form-group">
                 <label className="form-label">Ngày hết hạn</label>
-                <input className="form-control" type="date" value={form.expires_at} onChange={e => setField('expires_at', e.target.value)} />
+                <input className="form-control" type="date" value={form.expiry_at} onChange={e => setField('expiry_at', e.target.value)} />
               </div>
               <div className="form-group full">
                 <label className="form-label">Mô tả</label>

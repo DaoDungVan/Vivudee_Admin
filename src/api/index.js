@@ -58,4 +58,4 @@ export const getCoupons      = (params)   => api.get('/admin/coupons', { params 
 export const createCoupon    = (data)     => api.post('/admin/coupons', data)
 export const updateCoupon    = (id, data) => api.put(`/admin/coupons/${id}`, data)
 export const deleteCoupon    = (id)       => api.delete(`/admin/coupons/${id}`)
-export const toggleCoupon    = (id)       => api.patch(`/admin/coupons/${id}/toggle`)
+export const toggleCoupon    = (id, isActive) => api.patch(`/admin/coupons/${id}/status`, { is_active: !isActive })
