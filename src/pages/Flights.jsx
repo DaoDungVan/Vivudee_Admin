@@ -29,6 +29,19 @@ const STATUS_LABELS = {
 }
 const FLIGHT_STATUSES = ['scheduled', 'delayed', 'cancelled', 'completed']
 
+// Extract date & time directly from string to avoid UTC→local timezone shift
+const formatRawDateTime = (iso) => {
+  if (!iso) return '—'
+  const s = String(iso)
+  // Match YYYY-MM-DD and HH:MM
+  const dateMatch = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  const timeMatch = s.match(/[T ](\d{2}):(\d{2})/)
+  if (!dateMatch) return s
+  const [, y, m, d] = dateMatch
+  const time = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : ''
+  return time ? `${d}/${m}/${y} ${time}` : `${d}/${m}/${y}`
+}
+
 const emptyFlight = {
   flight_number: '', airline_id: '', departure_airport_id: '', arrival_airport_id: '',
   departure_time: '', arrival_time: '', duration_minutes: '',
@@ -110,8 +123,8 @@ export default function FlightsPage() {
       airline_id:           f.airline_id,
       departure_airport_id: f.departure_airport_id,
       arrival_airport_id:   f.arrival_airport_id,
-      departure_time:       f.departure_time?.slice(0, 16) || '',
-      arrival_time:         f.arrival_time?.slice(0, 16) || '',
+      departure_time:       f.departure_time?.replace(' ', 'T').slice(0, 16) || '',
+      arrival_time:         f.arrival_time?.replace(' ', 'T').slice(0, 16) || '',
       duration_minutes:     f.duration_minutes,
       seats: f.seats || [{ class: 'economy', total_seats: '', base_price: '' }],
     })
@@ -224,10 +237,10 @@ export default function FlightsPage() {
                         </div>
                       </td>
                       <td style={{ fontSize: 12 }}>
-                        {f.departure_time ? new Date(f.departure_time).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                        {f.departure_time ? formatRawDateTime(f.departure_time) : '—'}
                       </td>
                       <td style={{ fontSize: 12 }}>
-                        {f.arrival_time ? new Date(f.arrival_time).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                        {f.arrival_time ? formatRawDateTime(f.arrival_time) : '—'}
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                         {f.duration_minutes ? `${Math.floor(f.duration_minutes/60)}h${f.duration_minutes%60 ? f.duration_minutes%60+'m' : ''}` : '—'}
