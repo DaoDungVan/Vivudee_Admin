@@ -11,6 +11,7 @@ const navItems = [
   { to: '/users', icon: '👥', label: 'Người Dùng' },
   { to: '/bookings', icon: '🎫', label: 'Đặt Vé' },
   { to: '/coupons', icon: '🏷️', label: 'Coupon' },
+  { to: '/chat', icon: '💬', label: 'Hỗ Trợ Chat' },
 ]
 
 export default function Layout() {
@@ -53,7 +54,6 @@ export default function Layout() {
 
       {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Close menu overlay" onClick={() => setMobileNavOpen(false)} />}
 
-      {/* Sidebar */}
       <aside className={`sidebar${mobileNavOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
           <img src={LogoNav} alt="VivuDee"/>
@@ -85,7 +85,6 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
       <div className="main-content">
         <Outlet />
       </div>

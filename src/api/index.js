@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 const BASE = 'https://backend-log-function-2.onrender.com/api'
+export const SOCKET_BASE_URL = BASE.replace(/\/api\/?$/, '')
 
 const api = axios.create({ baseURL: BASE })
 
@@ -59,3 +60,9 @@ export const createCoupon    = (data)     => api.post('/admin/coupons', data)
 export const updateCoupon    = (id, data) => api.put(`/admin/coupons/${id}`, data)
 export const deleteCoupon    = (id)       => api.delete(`/admin/coupons/${id}`)
 export const toggleCoupon    = (id, isActive) => api.patch(`/admin/coupons/${id}/status`, { is_active: !isActive })
+
+// Chat support
+export const getChatConversations = (params) => api.get('/admin/chat/conversations', { params })
+export const getChatConversationById = (id) => api.get(`/admin/chat/conversations/${id}`)
+export const sendChatReply = (id, data) => api.post(`/admin/chat/conversations/${id}/message`, data)
+export const updateChatConversationStatus = (id, status) => api.patch(`/admin/chat/conversations/${id}/status`, { status })
