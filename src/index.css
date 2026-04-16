@@ -868,6 +868,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   grid-template-columns: 360px minmax(0, 1fr);
   gap: 18px;
   min-height: calc(100vh - 180px);
+  align-items: stretch;
 }
 
 .chat-thread-panel,
@@ -877,6 +878,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow);
+  min-height: 0;
 }
 
 .chat-thread-toolbar {
@@ -888,6 +890,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 }
 
 .chat-thread-list {
+  min-height: 0;
   max-height: calc(100vh - 260px);
   overflow-y: auto;
 }
@@ -963,11 +966,13 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .chat-detail-panel {
   display: flex;
   flex-direction: column;
+  min-height: calc(100vh - 180px);
 }
 
 .chat-detail-header {
   padding: 18px 20px;
   border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 
 .chat-detail-actions {
@@ -978,8 +983,10 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 
 .chat-message-list {
   flex: 1;
+  min-height: 0;
   padding: 18px 20px;
   overflow-y: auto;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(14, 129, 205, 0.04), transparent 30%),
     linear-gradient(180deg, rgba(14, 129, 205, 0.02), transparent 26%);
@@ -1031,6 +1038,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   padding: 18px 20px 20px;
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
+  flex: 0 0 auto;
 }
 
 .chat-composer textarea {
@@ -1046,10 +1054,15 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 @media (max-width: 900px) {
   .chat-admin-layout {
     grid-template-columns: 1fr;
+    min-height: auto;
   }
 
   .chat-thread-list {
     max-height: 320px;
+  }
+
+  .chat-detail-panel {
+    min-height: 620px;
   }
 }
 

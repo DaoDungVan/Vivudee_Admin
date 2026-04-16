@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getChatConversations,
   getChatConversationById,
@@ -22,10 +22,12 @@ const STATUS_LABELS = {
   resolved: 'Đã xử lý',
 }
 
+const emptyDetail = { conversation: null, messages: [] }
+
 export default function ChatPage() {
   const [threads, setThreads] = useState([])
   const [activeId, setActiveId] = useState(null)
-  const [detail, setDetail] = useState({ conversation: null, messages: [] })
+  const [detail, setDetail] = useState(emptyDetail)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [reply, setReply] = useState('')
@@ -35,8 +37,15 @@ export default function ChatPage() {
   const [error, setError] = useState('')
 
   const messagesRef = useRef(null)
+  const activeIdRef = useRef(null)
+  const detailRequestIdRef = useRef(0)
+  const selectedConversationRef = useRef(null)
 
-  const loadThreads = async ({ silent = false } = {}) => {
+  useEffect(() => {
+    activeIdRef.current = activeId
+  }, [activeId])
+
+  const loadThreads = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
       setLoadingList(true)
     }
@@ -53,11 +62,17 @@ export default function ChatPage() {
       setThreads(nextThreads)
       setError('')
 
-      if (!activeId && nextThreads[0]) {
-        setActiveId(nextThreads[0].id)
-      } else if (activeId && !nextThreads.find(item => item.id === activeId)) {
-        setActiveId(nextThreads[0]?.id || null)
-      }
+      setActiveId(previousActiveId => {
+        if (!previousActiveId && nextThreads[0]) {
+          return nextThreads[0].id
+        }
+
+        if (previousActiveId && !nextThreads.find(item => item.id === previousActiveId)) {
+          return nextThreads[0]?.id || null
+        }
+
+        return previousActiveId
+      })
     } catch (err) {
       if (!silent) {
         setError(err.response?.data?.error || 'Không tải được danh sách hội thoại')
@@ -67,40 +82,58 @@ export default function ChatPage() {
         setLoadingList(false)
       }
     }
-  }
+  }, [search, status])
 
-  const loadConversation = async (conversationId, { silent = false } = {}) => {
+  const loadConversation = useCallback(async (conversationId, { silent = false } = {}) => {
     if (!conversationId) {
-      setDetail({ conversation: null, messages: [] })
+      selectedConversationRef.current = null
+      setDetail(emptyDetail)
+      setLoadingDetail(false)
       return
     }
 
+    selectedConversationRef.current = conversationId
+    const requestId = detailRequestIdRef.current + 1
+    detailRequestIdRef.current = requestId
+
     if (!silent) {
       setLoadingDetail(true)
+      setReply('')
+      setDetail(previousDetail =>
+        previousDetail.conversation?.id === conversationId ? previousDetail : emptyDetail
+      )
     }
 
     try {
       const res = await getChatConversationById(conversationId)
-      setDetail(res.data?.data || { conversation: null, messages: [] })
+
+      if (
+        detailRequestIdRef.current !== requestId ||
+        Number(selectedConversationRef.current) !== Number(conversationId)
+      ) {
+        return
+      }
+
+      setDetail(res.data?.data || emptyDetail)
       setError('')
     } catch (err) {
-      if (!silent) {
+      if (!silent && detailRequestIdRef.current === requestId) {
         setError(err.response?.data?.error || 'Không tải được nội dung hội thoại')
       }
     } finally {
-      if (!silent) {
+      if (!silent && detailRequestIdRef.current === requestId) {
         setLoadingDetail(false)
       }
     }
-  }
+  }, [])
 
   useEffect(() => {
     loadThreads()
-  }, [search, status])
+  }, [loadThreads])
 
   useEffect(() => {
     loadConversation(activeId)
-  }, [activeId])
+  }, [activeId, loadConversation])
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -114,8 +147,9 @@ export default function ChatPage() {
     const handleSupportUpdated = (payload = {}) => {
       loadThreads({ silent: true })
 
-      if (!activeId || Number(payload.conversationId) === Number(activeId)) {
-        loadConversation(activeId || payload.conversationId, { silent: true })
+      const currentActiveId = activeIdRef.current
+      if (!currentActiveId || Number(payload.conversationId) === Number(currentActiveId)) {
+        loadConversation(currentActiveId || payload.conversationId, { silent: true })
       }
     }
 
@@ -125,7 +159,7 @@ export default function ChatPage() {
       socket.off('admin:support_updated', handleSupportUpdated)
       socket.disconnect()
     }
-  }, [activeId, search, status])
+  }, [loadConversation, loadThreads])
 
   useEffect(() => {
     if (!messagesRef.current) {
@@ -135,18 +169,31 @@ export default function ChatPage() {
     messagesRef.current.scrollTop = messagesRef.current.scrollHeight
   }, [detail.messages])
 
+  const handleSelectThread = (conversationId) => {
+    if (!conversationId || Number(conversationId) === Number(activeIdRef.current)) {
+      return
+    }
+
+    setActiveId(conversationId)
+  }
+
   const handleSend = async () => {
     const message = reply.trim()
     if (!message || !activeId || sending) {
       return
     }
 
+    const conversationId = activeId
     setSending(true)
 
     try {
-      const res = await sendChatReply(activeId, { message })
-      setDetail(res.data?.data || { conversation: null, messages: [] })
-      setReply('')
+      const res = await sendChatReply(conversationId, { message })
+
+      if (Number(activeIdRef.current) === Number(conversationId)) {
+        setDetail(res.data?.data || emptyDetail)
+        setReply('')
+      }
+
       await loadThreads({ silent: true })
     } catch (err) {
       setError(err.response?.data?.error || 'Không gửi được phản hồi')
@@ -160,9 +207,15 @@ export default function ChatPage() {
       return
     }
 
+    const conversationId = activeId
+
     try {
-      const res = await updateChatConversationStatus(activeId, nextStatus)
-      setDetail(res.data?.data || { conversation: null, messages: [] })
+      const res = await updateChatConversationStatus(conversationId, nextStatus)
+
+      if (Number(activeIdRef.current) === Number(conversationId)) {
+        setDetail(res.data?.data || emptyDetail)
+      }
+
       await loadThreads({ silent: true })
     } catch (err) {
       setError(err.response?.data?.error || 'Không cập nhật được trạng thái')
@@ -220,7 +273,7 @@ export default function ChatPage() {
                     key={thread.id}
                     type="button"
                     className={`chat-thread-item${thread.id === activeId ? ' active' : ''}`}
-                    onClick={() => setActiveId(thread.id)}
+                    onClick={() => handleSelectThread(thread.id)}
                   >
                     <div className="chat-thread-head">
                       <strong>{thread.user?.full_name || thread.user?.email || `User #${thread.user?.id}`}</strong>
