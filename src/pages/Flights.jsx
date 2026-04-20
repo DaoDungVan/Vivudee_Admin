@@ -240,7 +240,7 @@ export default function FlightsPage() {
     } catch (e) {
       const backendError = e.response?.data?.error || ''
       if (backendError.includes('flights_pkey')) {
-        setError('Request tao chuyen bay bi gui trung. Vui long thu lai mot lan.')
+        setError('Backend dang bi trung ID tu dong cua bang flights, khong phai trung so hieu bay.')
       } else {
         setError(backendError || 'Loi khi luu')
       }
