@@ -3,8 +3,12 @@ import { SOCKET_BASE_URL } from './api'
 
 export const createSocketConnection = (token) =>
   io(SOCKET_BASE_URL, {
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
     autoConnect: true,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
     auth: {
       token,
     },

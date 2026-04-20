@@ -68,12 +68,14 @@ export default function ChatPage() {
   const detailLoadedAtRef = useRef(new Map())
   const threadsRefreshTimerRef = useRef(null)
   const detailRefreshTimerRef = useRef(null)
+  const loadThreadsRef = useRef(null)
+  const loadConversationRef = useRef(null)
 
   useEffect(() => {
     activeIdRef.current = activeId
   }, [activeId])
 
-  const syncThreadFromDetail = useCallback((nextDetail) => {
+  const syncThreadFromDetail = useCallback((nextDetail, { promote = false } = {}) => {
     const preview = buildThreadPreview(nextDetail)
     if (!preview.id) return
 
@@ -83,12 +85,14 @@ export default function ChatPage() {
 
       if (index >= 0) {
         nextThreads[index] = { ...nextThreads[index], ...preview }
-        const [item] = nextThreads.splice(index, 1)
-        nextThreads.unshift(item)
+        if (promote) {
+          const [item] = nextThreads.splice(index, 1)
+          nextThreads.unshift(item)
+        }
         return nextThreads
       }
 
-      return [preview, ...nextThreads]
+      return promote ? [preview, ...nextThreads] : nextThreads
     })
   }, [])
 
@@ -144,6 +148,7 @@ export default function ChatPage() {
       }
     }
   }, [debouncedSearch, status])
+  loadThreadsRef.current = loadThreads
 
   const loadConversation = useCallback(async (conversationId, options = {}) => {
     const { silent = false, force = false } = options
@@ -194,7 +199,6 @@ export default function ChatPage() {
       const nextDetail = res.data?.data || emptyDetail
       cacheConversationDetail(conversationId, nextDetail)
       setDetail(nextDetail)
-      syncThreadFromDetail(nextDetail)
       setError('')
     } catch (err) {
       if (!silent && detailRequestIdRef.current === requestId) {
@@ -206,6 +210,7 @@ export default function ChatPage() {
       }
     }
   }, [cacheConversationDetail, syncThreadFromDetail])
+  loadConversationRef.current = loadConversation
 
   useEffect(() => {
     loadThreads()
@@ -222,14 +227,12 @@ export default function ChatPage() {
       return undefined
     }
 
-    const socket = createSocketConnection(token)
-
     const scheduleThreadsRefresh = () => {
       if (threadsRefreshTimerRef.current) return
 
       threadsRefreshTimerRef.current = window.setTimeout(() => {
         threadsRefreshTimerRef.current = null
-        loadThreads({ silent: true })
+        loadThreadsRef.current?.({ silent: true })
       }, 250)
     }
 
@@ -238,17 +241,18 @@ export default function ChatPage() {
 
       detailRefreshTimerRef.current = window.setTimeout(() => {
         detailRefreshTimerRef.current = null
-        loadConversation(conversationId, { silent: true, force: true })
+        loadConversationRef.current?.(conversationId, { silent: true, force: true })
       }, 200)
     }
+
+    const socket = createSocketConnection(token)
 
     const handleSupportUpdated = (payload = {}) => {
       scheduleThreadsRefresh()
 
       const currentActiveId = activeIdRef.current
-      const targetId = currentActiveId || payload.conversationId
-      if (targetId && Number(payload.conversationId) === Number(targetId || payload.conversationId)) {
-        scheduleDetailRefresh(targetId)
+      if (currentActiveId && Number(payload.conversationId) === Number(currentActiveId)) {
+        scheduleDetailRefresh(currentActiveId)
       }
     }
 
@@ -268,7 +272,7 @@ export default function ChatPage() {
       socket.off('admin:support_updated', handleSupportUpdated)
       socket.disconnect()
     }
-  }, [loadConversation, loadThreads])
+  }, [])
 
   useEffect(() => {
     if (!messagesRef.current) {
@@ -315,7 +319,7 @@ export default function ChatPage() {
       }
 
       cacheConversationDetail(conversationId, nextDetail)
-      syncThreadFromDetail(nextDetail)
+      syncThreadFromDetail(nextDetail, { promote: true })
       return nextDetail
     })
     setReply('')
@@ -325,7 +329,7 @@ export default function ChatPage() {
       const nextDetail = res.data?.data || emptyDetail
 
       cacheConversationDetail(conversationId, nextDetail)
-      syncThreadFromDetail(nextDetail)
+      syncThreadFromDetail(nextDetail, { promote: true })
 
       if (Number(activeIdRef.current) === Number(conversationId)) {
         setDetail(nextDetail)
