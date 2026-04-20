@@ -5,24 +5,46 @@ import {
   sendChatReply,
   updateChatConversationStatus,
 } from '../api'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { createSocketConnection } from '../socket'
 
 const STATUS_OPTIONS = [
-  { value: '', label: 'Tất cả trạng thái' },
-  { value: 'open', label: 'Sẵn sàng hỗ trợ' },
-  { value: 'pending_admin', label: 'Chờ admin' },
-  { value: 'pending_user', label: 'Chờ user' },
-  { value: 'resolved', label: 'Đã xử lý' },
+  { value: '', label: 'Tat ca trang thai' },
+  { value: 'open', label: 'San sang ho tro' },
+  { value: 'pending_admin', label: 'Cho admin' },
+  { value: 'pending_user', label: 'Cho user' },
+  { value: 'resolved', label: 'Da xu ly' },
 ]
 
 const STATUS_LABELS = {
-  open: 'Sẵn sàng hỗ trợ',
-  pending_admin: 'Chờ admin',
-  pending_user: 'Chờ user',
-  resolved: 'Đã xử lý',
+  open: 'San sang ho tro',
+  pending_admin: 'Cho admin',
+  pending_user: 'Cho user',
+  resolved: 'Da xu ly',
 }
 
 const emptyDetail = { conversation: null, messages: [] }
+const DETAIL_CACHE_TTL = 15000
+
+const cloneDetail = (detail) => ({
+  conversation: detail?.conversation ? { ...detail.conversation } : null,
+  messages: Array.isArray(detail?.messages) ? [...detail.messages] : [],
+})
+
+const buildThreadPreview = (detail) => {
+  const conversation = detail?.conversation || {}
+  const messages = detail?.messages || []
+  const lastMessage = messages[messages.length - 1]
+
+  return {
+    id: conversation.id,
+    user: conversation.user,
+    status: conversation.status,
+    unread_count: conversation.unread_count ?? 0,
+    last_message_preview: lastMessage?.content || conversation.last_message_preview || '',
+    last_message_at: lastMessage?.created_at || conversation.last_message_at || null,
+  }
+}
 
 export default function ChatPage() {
   const [threads, setThreads] = useState([])
@@ -36,16 +58,51 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
 
+  const debouncedSearch = useDebouncedValue(search, 300)
   const messagesRef = useRef(null)
   const activeIdRef = useRef(null)
   const detailRequestIdRef = useRef(0)
+  const threadRequestIdRef = useRef(0)
   const selectedConversationRef = useRef(null)
+  const detailCacheRef = useRef(new Map())
+  const detailLoadedAtRef = useRef(new Map())
+  const threadsRefreshTimerRef = useRef(null)
+  const detailRefreshTimerRef = useRef(null)
 
   useEffect(() => {
     activeIdRef.current = activeId
   }, [activeId])
 
+  const syncThreadFromDetail = useCallback((nextDetail) => {
+    const preview = buildThreadPreview(nextDetail)
+    if (!preview.id) return
+
+    setThreads((currentThreads) => {
+      const nextThreads = [...currentThreads]
+      const index = nextThreads.findIndex((item) => Number(item.id) === Number(preview.id))
+
+      if (index >= 0) {
+        nextThreads[index] = { ...nextThreads[index], ...preview }
+        const [item] = nextThreads.splice(index, 1)
+        nextThreads.unshift(item)
+        return nextThreads
+      }
+
+      return [preview, ...nextThreads]
+    })
+  }, [])
+
+  const cacheConversationDetail = useCallback((conversationId, nextDetail) => {
+    if (!conversationId) return
+
+    detailCacheRef.current.set(Number(conversationId), cloneDetail(nextDetail))
+    detailLoadedAtRef.current.set(Number(conversationId), Date.now())
+  }, [])
+
   const loadThreads = useCallback(async ({ silent = false } = {}) => {
+    const requestId = threadRequestIdRef.current + 1
+    threadRequestIdRef.current = requestId
+
     if (!silent) {
       setLoadingList(true)
     }
@@ -54,20 +111,24 @@ export default function ChatPage() {
       const res = await getChatConversations({
         page: 1,
         limit: 50,
-        search: search || undefined,
+        search: debouncedSearch.trim() || undefined,
         status: status || undefined,
       })
+
+      if (threadRequestIdRef.current !== requestId) {
+        return
+      }
 
       const nextThreads = res.data?.data || []
       setThreads(nextThreads)
       setError('')
 
-      setActiveId(previousActiveId => {
+      setActiveId((previousActiveId) => {
         if (!previousActiveId && nextThreads[0]) {
           return nextThreads[0].id
         }
 
-        if (previousActiveId && !nextThreads.find(item => item.id === previousActiveId)) {
+        if (previousActiveId && !nextThreads.find((item) => Number(item.id) === Number(previousActiveId))) {
           return nextThreads[0]?.id || null
         }
 
@@ -75,16 +136,18 @@ export default function ChatPage() {
       })
     } catch (err) {
       if (!silent) {
-        setError(err.response?.data?.error || 'Không tải được danh sách hội thoại')
+        setError(err.response?.data?.error || 'Khong tai duoc danh sach hoi thoai')
       }
     } finally {
-      if (!silent) {
+      if (!silent && threadRequestIdRef.current === requestId) {
         setLoadingList(false)
       }
     }
-  }, [search, status])
+  }, [debouncedSearch, status])
 
-  const loadConversation = useCallback(async (conversationId, { silent = false } = {}) => {
+  const loadConversation = useCallback(async (conversationId, options = {}) => {
+    const { silent = false, force = false } = options
+
     if (!conversationId) {
       selectedConversationRef.current = null
       setDetail(emptyDetail)
@@ -96,12 +159,26 @@ export default function ChatPage() {
     const requestId = detailRequestIdRef.current + 1
     detailRequestIdRef.current = requestId
 
+    const cacheKey = Number(conversationId)
+    const cachedDetail = detailCacheRef.current.get(cacheKey)
+    const loadedAt = detailLoadedAtRef.current.get(cacheKey) || 0
+    const isFresh = Date.now() - loadedAt < DETAIL_CACHE_TTL
+
     if (!silent) {
-      setLoadingDetail(true)
       setReply('')
-      setDetail(previousDetail =>
-        previousDetail.conversation?.id === conversationId ? previousDetail : emptyDetail
-      )
+      if (cachedDetail) {
+        setDetail(cloneDetail(cachedDetail))
+        setLoadingDetail(false)
+      } else {
+        setLoadingDetail(true)
+        setDetail((previousDetail) =>
+          previousDetail.conversation?.id === conversationId ? previousDetail : emptyDetail
+        )
+      }
+    }
+
+    if (!force && cachedDetail && isFresh) {
+      return
     }
 
     try {
@@ -114,18 +191,21 @@ export default function ChatPage() {
         return
       }
 
-      setDetail(res.data?.data || emptyDetail)
+      const nextDetail = res.data?.data || emptyDetail
+      cacheConversationDetail(conversationId, nextDetail)
+      setDetail(nextDetail)
+      syncThreadFromDetail(nextDetail)
       setError('')
     } catch (err) {
       if (!silent && detailRequestIdRef.current === requestId) {
-        setError(err.response?.data?.error || 'Không tải được nội dung hội thoại')
+        setError(err.response?.data?.error || 'Khong tai duoc noi dung hoi thoai')
       }
     } finally {
       if (!silent && detailRequestIdRef.current === requestId) {
         setLoadingDetail(false)
       }
     }
-  }, [])
+  }, [cacheConversationDetail, syncThreadFromDetail])
 
   useEffect(() => {
     loadThreads()
@@ -144,18 +224,47 @@ export default function ChatPage() {
 
     const socket = createSocketConnection(token)
 
+    const scheduleThreadsRefresh = () => {
+      if (threadsRefreshTimerRef.current) return
+
+      threadsRefreshTimerRef.current = window.setTimeout(() => {
+        threadsRefreshTimerRef.current = null
+        loadThreads({ silent: true })
+      }, 250)
+    }
+
+    const scheduleDetailRefresh = (conversationId) => {
+      if (!conversationId || detailRefreshTimerRef.current) return
+
+      detailRefreshTimerRef.current = window.setTimeout(() => {
+        detailRefreshTimerRef.current = null
+        loadConversation(conversationId, { silent: true, force: true })
+      }, 200)
+    }
+
     const handleSupportUpdated = (payload = {}) => {
-      loadThreads({ silent: true })
+      scheduleThreadsRefresh()
 
       const currentActiveId = activeIdRef.current
-      if (!currentActiveId || Number(payload.conversationId) === Number(currentActiveId)) {
-        loadConversation(currentActiveId || payload.conversationId, { silent: true })
+      const targetId = currentActiveId || payload.conversationId
+      if (targetId && Number(payload.conversationId) === Number(targetId || payload.conversationId)) {
+        scheduleDetailRefresh(targetId)
       }
     }
 
     socket.on('admin:support_updated', handleSupportUpdated)
 
     return () => {
+      if (threadsRefreshTimerRef.current) {
+        window.clearTimeout(threadsRefreshTimerRef.current)
+        threadsRefreshTimerRef.current = null
+      }
+
+      if (detailRefreshTimerRef.current) {
+        window.clearTimeout(detailRefreshTimerRef.current)
+        detailRefreshTimerRef.current = null
+      }
+
       socket.off('admin:support_updated', handleSupportUpdated)
       socket.disconnect()
     }
@@ -174,6 +283,12 @@ export default function ChatPage() {
       return
     }
 
+    const cachedDetail = detailCacheRef.current.get(Number(conversationId))
+    if (cachedDetail) {
+      setDetail(cloneDetail(cachedDetail))
+      setLoadingDetail(false)
+    }
+
     setActiveId(conversationId)
   }
 
@@ -184,19 +299,43 @@ export default function ChatPage() {
     }
 
     const conversationId = activeId
+    const optimisticMessage = {
+      id: `optimistic-${Date.now()}`,
+      content: message,
+      created_at: new Date().toISOString(),
+      sender_name: 'Admin',
+      sender_role: 'admin',
+    }
+
     setSending(true)
+    setDetail((currentDetail) => {
+      const nextDetail = {
+        conversation: currentDetail.conversation,
+        messages: [...(currentDetail.messages || []), optimisticMessage],
+      }
+
+      cacheConversationDetail(conversationId, nextDetail)
+      syncThreadFromDetail(nextDetail)
+      return nextDetail
+    })
+    setReply('')
 
     try {
       const res = await sendChatReply(conversationId, { message })
+      const nextDetail = res.data?.data || emptyDetail
+
+      cacheConversationDetail(conversationId, nextDetail)
+      syncThreadFromDetail(nextDetail)
 
       if (Number(activeIdRef.current) === Number(conversationId)) {
-        setDetail(res.data?.data || emptyDetail)
-        setReply('')
+        setDetail(nextDetail)
       }
 
-      await loadThreads({ silent: true })
+      loadThreads({ silent: true })
     } catch (err) {
-      setError(err.response?.data?.error || 'Không gửi được phản hồi')
+      setReply(message)
+      setError(err.response?.data?.error || 'Khong gui duoc phan hoi')
+      loadConversation(conversationId, { silent: true, force: true })
     } finally {
       setSending(false)
     }
@@ -209,16 +348,37 @@ export default function ChatPage() {
 
     const conversationId = activeId
 
-    try {
-      const res = await updateChatConversationStatus(conversationId, nextStatus)
+    setDetail((currentDetail) => {
+      if (!currentDetail.conversation) return currentDetail
 
-      if (Number(activeIdRef.current) === Number(conversationId)) {
-        setDetail(res.data?.data || emptyDetail)
+      const nextDetail = {
+        ...currentDetail,
+        conversation: {
+          ...currentDetail.conversation,
+          status: nextStatus,
+        },
       }
 
-      await loadThreads({ silent: true })
+      cacheConversationDetail(conversationId, nextDetail)
+      syncThreadFromDetail(nextDetail)
+      return nextDetail
+    })
+
+    try {
+      const res = await updateChatConversationStatus(conversationId, nextStatus)
+      const nextDetail = res.data?.data || emptyDetail
+
+      cacheConversationDetail(conversationId, nextDetail)
+      syncThreadFromDetail(nextDetail)
+
+      if (Number(activeIdRef.current) === Number(conversationId)) {
+        setDetail(nextDetail)
+      }
+
+      loadThreads({ silent: true })
     } catch (err) {
-      setError(err.response?.data?.error || 'Không cập nhật được trạng thái')
+      setError(err.response?.data?.error || 'Khong cap nhat duoc trang thai')
+      loadConversation(conversationId, { silent: true, force: true })
     }
   }
 
@@ -233,8 +393,8 @@ export default function ChatPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">💬 Hộp thư hỗ trợ</div>
-          <div className="page-subtitle">User ở bên trái, chat box ở bên phải theo luồng support</div>
+          <div className="page-title">💬 Hop thu ho tro</div>
+          <div className="page-subtitle">User o ben trai, chat box o ben phai theo luong support</div>
         </div>
       </div>
 
@@ -248,12 +408,12 @@ export default function ChatPage() {
                 <span className="search-icon">🔍</span>
                 <input
                   value={search}
-                  onChange={event => setSearch(event.target.value)}
-                  placeholder="Tìm user theo tên, email..."
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Tim user theo ten, email..."
                 />
               </div>
-              <select className="filter-select" value={status} onChange={event => setStatus(event.target.value)}>
-                {STATUS_OPTIONS.map(option => (
+              <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value)}>
+                {STATUS_OPTIONS.map((option) => (
                   <option key={option.value || 'all'} value={option.value}>{option.label}</option>
                 ))}
               </select>
@@ -264,11 +424,11 @@ export default function ChatPage() {
             ) : threads.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">💬</div>
-                <div className="empty-text">Chưa có hội thoại support nào</div>
+                <div className="empty-text">Chua co hoi thoai support nao</div>
               </div>
             ) : (
               <div className="chat-thread-list">
-                {threads.map(thread => (
+                {threads.map((thread) => (
                   <button
                     key={thread.id}
                     type="button"
@@ -280,7 +440,7 @@ export default function ChatPage() {
                       {thread.unread_count > 0 && <span className="chat-unread-badge">{thread.unread_count}</span>}
                     </div>
                     <div className="chat-thread-email">{thread.user?.email}</div>
-                    <div className="chat-thread-preview">{thread.last_message_preview || 'Chưa có tin nhắn'}</div>
+                    <div className="chat-thread-preview">{thread.last_message_preview || 'Chua co tin nhan'}</div>
                     <div className="chat-thread-foot">
                       <span className={`badge ${thread.status === 'resolved' ? 'badge-success' : thread.status === 'pending_admin' ? 'badge-danger' : 'badge-info'}`}>
                         {STATUS_LABELS[thread.status] || thread.status}
@@ -297,7 +457,7 @@ export default function ChatPage() {
             {!activeId ? (
               <div className="empty-state">
                 <div className="empty-icon">🗂️</div>
-                <div className="empty-text">Chọn một user để xem cuộc trò chuyện</div>
+                <div className="empty-text">Chon mot user de xem cuoc tro chuyen</div>
               </div>
             ) : loadingDetail ? (
               <div className="loading-wrap"><div className="spinner" /></div>
@@ -306,7 +466,7 @@ export default function ChatPage() {
                 <div className="chat-detail-header">
                   <div>
                     <div className="chat-detail-title">
-                      {detail.conversation?.user?.full_name || detail.conversation?.user?.email || 'Hội thoại support'}
+                      {detail.conversation?.user?.full_name || detail.conversation?.user?.email || 'Hoi thoai support'}
                     </div>
                     <div className="chat-detail-subtitle">
                       {detail.conversation?.user?.email} {detail.conversation?.user?.phone ? `· ${detail.conversation.user.phone}` : ''}
@@ -317,9 +477,9 @@ export default function ChatPage() {
                     <select
                       className="filter-select"
                       value={detail.conversation?.status || 'open'}
-                      onChange={event => handleStatusChange(event.target.value)}
+                      onChange={(event) => handleStatusChange(event.target.value)}
                     >
-                      {STATUS_OPTIONS.filter(option => option.value).map(option => (
+                      {STATUS_OPTIONS.filter((option) => option.value).map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
                     </select>
@@ -327,7 +487,7 @@ export default function ChatPage() {
                 </div>
 
                 <div className="chat-message-list" ref={messagesRef}>
-                  {(detail.messages || []).map(message => (
+                  {(detail.messages || []).map((message) => (
                     <div
                       key={message.id}
                       className={`chat-message-row${message.sender_role === 'admin' ? ' mine' : ''}`}
@@ -348,12 +508,12 @@ export default function ChatPage() {
                     className="form-control"
                     rows={3}
                     value={reply}
-                    onChange={event => setReply(event.target.value)}
+                    onChange={(event) => setReply(event.target.value)}
                     onKeyDown={handleReplyKeyDown}
-                    placeholder="Nhập phản hồi cho user..."
+                    placeholder="Nhap phan hoi cho user..."
                   />
                   <button className="btn btn-primary" onClick={handleSend} disabled={sending || !reply.trim()}>
-                    {sending ? 'Đang gửi...' : 'Gửi phản hồi'}
+                    {sending ? 'Dang gui...' : 'Gui phan hoi'}
                   </button>
                 </div>
               </>
