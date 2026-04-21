@@ -4,13 +4,9 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const SEARCH_FETCH_LIMIT = 500
 const SORT_OPTIONS = [
-  { value: 'nearest', label: 'Gan moc thoi gian' },
-  { value: 'asc', label: 'Som den muon' },
-  { value: 'desc', label: 'Muon den som' },
-]
-const SORT_FIELDS = [
-  { value: 'departure_time', label: 'Gio khoi hanh' },
-  { value: 'arrival_time', label: 'Gio den noi' },
+  { value: '', label: 'Sap xep khoi hanh' },
+  { value: 'desc', label: 'Chuyen moi nhat' },
+  { value: 'asc', label: 'Chuyen cu nhat' },
 ]
 
 const matchesFlightSearch = (flight, keyword) => {
@@ -37,26 +33,22 @@ const getFlightDateValue = (value) => {
   return Number.isNaN(time) ? Number.NaN : time
 }
 
-const sortFlightsByTime = (items, sortField, sortDirection, sortAnchor) => {
-  const anchorValue = getFlightDateValue(sortAnchor)
-  const hasAnchor = !Number.isNaN(anchorValue)
+const getFlightDateOnly = (value) => {
+  if (!value) return ''
+  const match = String(value).match(/(\d{4}-\d{2}-\d{2})/)
+  return match ? match[1] : ''
+}
 
+const sortFlightsByDepartureTime = (items, sortDirection) => {
   return [...items].sort((a, b) => {
-    const timeA = getFlightDateValue(a?.[sortField])
-    const timeB = getFlightDateValue(b?.[sortField])
+    const timeA = getFlightDateValue(a?.departure_time)
+    const timeB = getFlightDateValue(b?.departure_time)
     const missingA = Number.isNaN(timeA)
     const missingB = Number.isNaN(timeB)
 
     if (missingA && missingB) return 0
     if (missingA) return 1
     if (missingB) return -1
-
-    if (sortDirection === 'nearest' && hasAnchor) {
-      const diffA = Math.abs(timeA - anchorValue)
-      const diffB = Math.abs(timeB - anchorValue)
-      if (diffA !== diffB) return diffA - diffB
-      return timeA - timeB
-    }
 
     if (sortDirection === 'desc') return timeB - timeA
     return timeA - timeB
@@ -119,9 +111,8 @@ export default function FlightsPage() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const [sortField, setSortField] = useState('departure_time')
-  const [sortDirection, setSortDirection] = useState('nearest')
-  const [sortAnchor, setSortAnchor] = useState('')
+  const [departureDateFilter, setDepartureDateFilter] = useState('')
+  const [sortDirection, setSortDirection] = useState('')
   const [showHidden, setShowHidden] = useState(true)
   const [modal, setModal] = useState(null)
   const [editData, setEditData] = useState(null)
@@ -138,8 +129,9 @@ export default function FlightsPage() {
     const requestId = ++requestIdRef.current
     const keyword = debouncedSearch.trim()
     const searching = keyword.length > 0
-    const sorting = Boolean(sortAnchor)
-    const useClientPipeline = searching || sorting
+    const filteringByDepartureDate = Boolean(departureDateFilter)
+    const sorting = Boolean(sortDirection)
+    const useClientPipeline = searching || filteringByDepartureDate || sorting
 
     setLoading(true)
     getFlights({
@@ -161,8 +153,12 @@ export default function FlightsPage() {
             processedItems = processedItems.filter((item) => matchesFlightSearch(item, keyword))
           }
 
+          if (filteringByDepartureDate) {
+            processedItems = processedItems.filter((item) => getFlightDateOnly(item.departure_time) === departureDateFilter)
+          }
+
           if (sorting) {
-            processedItems = sortFlightsByTime(processedItems, sortField, sortDirection, sortAnchor)
+            processedItems = sortFlightsByDepartureTime(processedItems, sortDirection)
           }
 
           const total = processedItems.length
@@ -185,7 +181,7 @@ export default function FlightsPage() {
       .finally(() => {
         if (requestId === requestIdRef.current) setLoading(false)
       })
-  }, [page, limit, debouncedSearch, filterStatus, showHidden, sortField, sortDirection, sortAnchor])
+  }, [page, limit, debouncedSearch, filterStatus, showHidden, departureDateFilter, sortDirection])
 
   useEffect(() => {
     load()
@@ -285,10 +281,9 @@ export default function FlightsPage() {
       seats: p.seats.filter((_, seatIndex) => seatIndex !== index),
     }))
 
-  const clearSort = () => {
-    setSortField('departure_time')
-    setSortDirection('nearest')
-    setSortAnchor('')
+  const clearFilters = () => {
+    setDepartureDateFilter('')
+    setSortDirection('')
     setPage(1)
   }
 
@@ -328,11 +323,6 @@ export default function FlightsPage() {
               <option key={statusValue} value={statusValue}>{STATUS_LABELS[statusValue]?.label}</option>
             ))}
           </select>
-          <select className="filter-select" value={sortField} onChange={(e) => { setSortField(e.target.value); setPage(1) }}>
-            {SORT_FIELDS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
           <select className="filter-select" value={sortDirection} onChange={(e) => { setSortDirection(e.target.value); setPage(1) }}>
             {SORT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -340,10 +330,10 @@ export default function FlightsPage() {
           </select>
           <input
             className="filter-select"
-            type="datetime-local"
-            value={sortAnchor}
-            onChange={(e) => { setSortAnchor(e.target.value); setPage(1) }}
-            title="Moc thoi gian de sap xep"
+            type="date"
+            value={departureDateFilter}
+            onChange={(e) => { setDepartureDateFilter(e.target.value); setPage(1) }}
+            title="Ngay khoi hanh"
           />
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <input type="checkbox" checked={showHidden} onChange={(e) => { setShowHidden(e.target.checked); setPage(1) }} />
@@ -352,7 +342,7 @@ export default function FlightsPage() {
           <select className="filter-select" value={limit} style={{ width: 80 }} onChange={() => {}}>
             <option value={15}>15/trang</option>
           </select>
-          <button className="btn btn-secondary btn-sm" onClick={clearSort}>Xoa sort</button>
+          <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Xoa loc</button>
           <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>Lam moi</button>
         </div>
 
