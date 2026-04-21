@@ -8,6 +8,32 @@ const SORT_OPTIONS = [
   { value: 'desc', label: 'Chuyen moi nhat' },
   { value: 'asc', label: 'Chuyen cu nhat' },
 ]
+const SEAT_DEFAULTS = {
+  economy: { baggage_included_kg: '23', carry_on_kg: '7', extra_baggage_price: '0' },
+  business: { baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_price: '0' },
+  first: { baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_price: '0' },
+}
+
+const createSeat = (seatClass = 'economy') => ({
+  class: seatClass,
+  total_seats: '',
+  base_price: '',
+  ...SEAT_DEFAULTS[seatClass],
+})
+
+const normalizeSeatForForm = (seat = {}) => {
+  const seatClass = seat.class || 'economy'
+  const defaults = SEAT_DEFAULTS[seatClass] || SEAT_DEFAULTS.economy
+
+  return {
+    class: seatClass,
+    total_seats: seat.total_seats ?? '',
+    base_price: seat.base_price ?? '',
+    baggage_included_kg: seat.baggage_included_kg ?? defaults.baggage_included_kg,
+    carry_on_kg: seat.carry_on_kg ?? defaults.carry_on_kg,
+    extra_baggage_price: seat.extra_baggage_price ?? defaults.extra_baggage_price,
+  }
+}
 
 const matchesFlightSearch = (flight, keyword) => {
   const q = keyword.toLowerCase()
@@ -83,7 +109,7 @@ const createEmptyFlight = () => ({
   departure_time: '',
   arrival_time: '',
   duration_minutes: '',
-  seats: [{ class: 'economy', total_seats: '', base_price: '' }],
+  seats: [createSeat('economy')],
 })
 
 const buildFlightPayload = (form) => ({
@@ -99,6 +125,9 @@ const buildFlightPayload = (form) => ({
         class: seat.class,
         total_seats: seat.total_seats,
         base_price: seat.base_price,
+        baggage_included_kg: seat.baggage_included_kg,
+        carry_on_kg: seat.carry_on_kg,
+        extra_baggage_price: seat.extra_baggage_price,
       }))
     : [],
 })
@@ -204,16 +233,12 @@ export default function FlightsPage() {
     setForm({
       flight_number: flight.flight_number,
       airline_id: flight.airline_id,
-      departure_airport_id: flight.departure_airport_id,
-      arrival_airport_id: flight.arrival_airport_id,
+      departure_airport_id: flight.departure_airport_id || flight.dep_id,
+      arrival_airport_id: flight.arrival_airport_id || flight.arr_id,
       departure_time: flight.departure_time?.replace(' ', 'T').slice(0, 16) || '',
       arrival_time: flight.arrival_time?.replace(' ', 'T').slice(0, 16) || '',
       duration_minutes: flight.duration_minutes,
-      seats: flight.seats?.map((seat) => ({
-        class: seat.class,
-        total_seats: seat.total_seats,
-        base_price: seat.base_price,
-      })) || [{ class: 'economy', total_seats: '', base_price: '' }],
+      seats: flight.seats?.map((seat) => normalizeSeatForForm(seat)) || [createSeat('economy')],
     })
     setError('')
     setModal('edit')
@@ -270,10 +295,23 @@ export default function FlightsPage() {
       ...p,
       seats: p.seats.map((seat, seatIndex) => (seatIndex === index ? { ...seat, [key]: value } : seat)),
     }))
+  const setSeatClass = (index, seatClass) =>
+    setForm((p) => ({
+      ...p,
+      seats: p.seats.map((seat, seatIndex) => (
+        seatIndex === index
+          ? {
+              ...seat,
+              class: seatClass,
+              ...(SEAT_DEFAULTS[seatClass] || SEAT_DEFAULTS.economy),
+            }
+          : seat
+      )),
+    }))
   const addSeat = () =>
     setForm((p) => ({
       ...p,
-      seats: [...p.seats, { class: 'business', total_seats: '', base_price: '' }],
+      seats: [...p.seats, createSeat('business')],
     }))
   const removeSeat = (index) =>
     setForm((p) => ({
@@ -502,7 +540,7 @@ export default function FlightsPage() {
                     <div className="form-grid">
                       <div className="form-group">
                         <label className="form-label">Hang</label>
-                        <select className="form-control" value={seat.class} onChange={(e) => setSeatField(index, 'class', e.target.value)}>
+                        <select className="form-control" value={seat.class} onChange={(e) => setSeatClass(index, e.target.value)}>
                           <option value="economy">Economy</option>
                           <option value="business">Business</option>
                           <option value="first">First Class</option>
@@ -515,6 +553,18 @@ export default function FlightsPage() {
                       <div className="form-group full">
                         <label className="form-label">Gia co ban (VND)</label>
                         <input className="form-control" type="number" value={seat.base_price} onChange={(e) => setSeatField(index, 'base_price', e.target.value)} placeholder="1500000" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Ky gui mien phi (kg)</label>
+                        <input className="form-control" type="number" value={seat.baggage_included_kg} onChange={(e) => setSeatField(index, 'baggage_included_kg', e.target.value)} placeholder="23" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Xach tay (kg)</label>
+                        <input className="form-control" type="number" value={seat.carry_on_kg} onChange={(e) => setSeatField(index, 'carry_on_kg', e.target.value)} placeholder="7" />
+                      </div>
+                      <div className="form-group full">
+                        <label className="form-label">Gia hanh ly them (VND/kg)</label>
+                        <input className="form-control" type="number" value={seat.extra_baggage_price} onChange={(e) => setSeatField(index, 'extra_baggage_price', e.target.value)} placeholder="0" />
                       </div>
                     </div>
                   </div>
