@@ -7,6 +7,15 @@ import {
 } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { createSocketConnection } from '../socket'
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  STICKER_PRESETS,
+  canAddSticker,
+  createAttachmentsFromFiles,
+  createStickerAttachment,
+  formatAttachmentSize,
+  getMessageAttachments,
+} from '../utils/chatAttachments'
 
 const STATUS_OPTIONS = [
   { value: '', label: 'Tat ca trang thai' },
@@ -31,6 +40,17 @@ const cloneDetail = (detail) => ({
   messages: Array.isArray(detail?.messages) ? [...detail.messages] : [],
 })
 
+const buildAttachmentPreview = (attachments = []) => {
+  if (!attachments.length) return ''
+  if (attachments.length === 1) {
+    const [attachment] = attachments
+    if (attachment.type === 'sticker') return '[Sticker]'
+    if (attachment.type === 'image') return `[Hinh anh] ${attachment.name || ''}`.trim()
+    return `[File] ${attachment.name || ''}`.trim()
+  }
+  return `[${attachments.length} tep dinh kem]`
+}
+
 const buildThreadPreview = (detail) => {
   const conversation = detail?.conversation || {}
   const messages = detail?.messages || []
@@ -41,7 +61,11 @@ const buildThreadPreview = (detail) => {
     user: conversation.user,
     status: conversation.status,
     unread_count: conversation.unread_count ?? 0,
-    last_message_preview: lastMessage?.content || conversation.last_message_preview || '',
+    last_message_preview:
+      lastMessage?.preview ||
+      lastMessage?.content ||
+      conversation.last_message_preview ||
+      '',
     last_message_at: lastMessage?.created_at || conversation.last_message_at || null,
   }
 }
@@ -59,6 +83,10 @@ function ExpandableMessageText({ content }) {
   const text = String(content || '')
   const canCollapse = shouldCollapseMessage(text)
 
+  if (!text.trim()) {
+    return null
+  }
+
   return (
     <>
       <p className={`chat-message-text${canCollapse && !expanded ? ' collapsed' : ''}`}>{text}</p>
@@ -75,6 +103,91 @@ function ExpandableMessageText({ content }) {
   )
 }
 
+function MessageAttachments({ message, onMediaLoad }) {
+  const attachments = getMessageAttachments(message)
+
+  if (attachments.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="chat-attachment-list">
+      {attachments.map((attachment, index) => {
+        const key = attachment.id || `${attachment.type}-${index}`
+
+        if (attachment.type === 'image' || attachment.type === 'sticker') {
+          return (
+            <a
+              key={key}
+              className={`chat-image-attachment${attachment.type === 'sticker' ? ' chat-sticker-attachment' : ''}`}
+              href={attachment.data_url}
+              download={attachment.name || undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img src={attachment.data_url} alt={attachment.label || attachment.name || 'attachment'} onLoad={onMediaLoad} />
+            </a>
+          )
+        }
+
+        return (
+          <a
+            key={key}
+            className="chat-file-attachment"
+            href={attachment.data_url}
+            download={attachment.name || undefined}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <div className="chat-file-attachment-title">{attachment.name || 'File dinh kem'}</div>
+            <div className="chat-file-attachment-meta">
+              <span>{attachment.mime_type || 'file'}</span>
+              <span>{formatAttachmentSize(attachment.size)}</span>
+            </div>
+            <span className="chat-file-attachment-link">Tai file</span>
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
+function AttachmentPreviewList({ attachments, onRemove }) {
+  if (!attachments.length) {
+    return null
+  }
+
+  return (
+    <div className="chat-composer-preview-list">
+      {attachments.map((attachment) => (
+        <div key={attachment.id} className="chat-composer-preview-item">
+          {attachment.type === 'image' || attachment.type === 'sticker' ? (
+            <img
+              className={`chat-composer-preview-thumb${attachment.type === 'sticker' ? ' sticker' : ''}`}
+              src={attachment.data_url}
+              alt={attachment.label || attachment.name || 'attachment'}
+            />
+          ) : (
+            <div className="chat-composer-preview-file">{attachment.name?.slice(0, 2).toUpperCase() || 'FI'}</div>
+          )}
+          <div className="chat-composer-preview-meta">
+            <strong>{attachment.label || attachment.name}</strong>
+            <span>{attachment.type === 'file' ? formatAttachmentSize(attachment.size) : attachment.type}</span>
+          </div>
+          <button
+            type="button"
+            className="chat-composer-preview-remove"
+            onClick={() => onRemove(attachment.id)}
+            aria-label="Xoa dinh kem"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ChatPage() {
   const [threads, setThreads] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -82,6 +195,8 @@ export default function ChatPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [reply, setReply] = useState('')
+  const [attachments, setAttachments] = useState([])
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false)
   const [loadingList, setLoadingList] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [sending, setSending] = useState(false)
@@ -90,6 +205,7 @@ export default function ChatPage() {
 
   const debouncedSearch = useDebouncedValue(search, 300)
   const messagesRef = useRef(null)
+  const fileInputRef = useRef(null)
   const activeIdRef = useRef(null)
   const shouldStickToBottomRef = useRef(true)
   const pendingScrollToLatestRef = useRef(false)
@@ -224,6 +340,8 @@ export default function ChatPage() {
 
     if (!silent) {
       setReply('')
+      setAttachments([])
+      setIsStickerPickerOpen(false)
       if (cachedDetail) {
         setDetail(cloneDetail(cachedDetail))
         setLoadingDetail(false)
@@ -262,7 +380,7 @@ export default function ChatPage() {
         setLoadingDetail(false)
       }
     }
-  }, [cacheConversationDetail, syncThreadFromDetail])
+  }, [cacheConversationDetail])
   loadConversationRef.current = loadConversation
 
   useEffect(() => {
@@ -368,9 +486,44 @@ export default function ChatPage() {
     setActiveId(conversationId)
   }
 
+  const handleAttachmentFileChange = async (event) => {
+    const files = event.target.files
+    if (!files?.length) {
+      return
+    }
+
+    try {
+      const nextAttachments = await createAttachmentsFromFiles(files, attachments.length)
+      setAttachments((previous) => [...previous, ...nextAttachments])
+      setError('')
+    } catch (attachmentError) {
+      setError(attachmentError?.message || 'Khong tai duoc tep dinh kem')
+    } finally {
+      event.target.value = ''
+    }
+  }
+
+  const handleAddSticker = (sticker) => {
+    try {
+      canAddSticker(attachments.length)
+      const nextAttachment = createStickerAttachment(sticker)
+      setAttachments((previous) => [...previous, nextAttachment])
+      setIsStickerPickerOpen(false)
+      setError('')
+    } catch (attachmentError) {
+      setError(attachmentError?.message || 'Khong them duoc sticker')
+    }
+  }
+
+  const handleRemoveAttachment = (attachmentId) => {
+    setAttachments((previous) => previous.filter((attachment) => attachment.id !== attachmentId))
+  }
+
   const handleSend = async () => {
     const message = reply.trim()
-    if (!message || !activeId || sending) {
+    const outgoingAttachments = attachments
+
+    if ((!message && outgoingAttachments.length === 0) || !activeId || sending) {
       return
     }
 
@@ -378,9 +531,13 @@ export default function ChatPage() {
     const optimisticMessage = {
       id: `optimistic-${Date.now()}`,
       content: message,
+      preview: message || buildAttachmentPreview(outgoingAttachments),
       created_at: new Date().toISOString(),
       sender_name: 'Admin',
       sender_role: 'admin',
+      meta: {
+        attachments: outgoingAttachments,
+      },
     }
 
     setSending(true)
@@ -397,9 +554,14 @@ export default function ChatPage() {
       return nextDetail
     })
     setReply('')
+    setAttachments([])
+    setIsStickerPickerOpen(false)
 
     try {
-      const res = await sendChatReply(conversationId, { message })
+      const res = await sendChatReply(conversationId, {
+        message,
+        attachments: outgoingAttachments,
+      })
       const nextDetail = res.data?.data || emptyDetail
 
       cacheConversationDetail(conversationId, nextDetail)
@@ -412,6 +574,7 @@ export default function ChatPage() {
       loadThreads({ silent: true })
     } catch (err) {
       setReply(message)
+      setAttachments(outgoingAttachments)
       setError(err.response?.data?.error || 'Khong gui duoc phan hoi')
       loadConversation(conversationId, { silent: true, force: true })
     } finally {
@@ -467,12 +630,22 @@ export default function ChatPage() {
     }
   }
 
+  const handleMediaLoad = useCallback(() => {
+    const element = messagesRef.current
+    if (!element) return
+
+    const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 120
+    if (isNearBottom) {
+      element.scrollTop = element.scrollHeight
+    }
+  }, [])
+
   return (
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">💬 Hop thu ho tro</div>
-          <div className="page-subtitle">User o ben trai, chat box o ben phai theo luong support</div>
+          <div className="page-title">Hop thu ho tro</div>
+          <div className="page-subtitle">User o ben trai, khung support o ben phai</div>
         </div>
       </div>
 
@@ -576,6 +749,7 @@ export default function ChatPage() {
                             <span>{message.sender_name || (message.sender_role === 'admin' ? 'Admin' : 'User')}</span>
                             <span>{new Date(message.created_at).toLocaleString('vi-VN')}</span>
                           </div>
+                          <MessageAttachments message={message} onMediaLoad={handleMediaLoad} />
                           <ExpandableMessageText content={message.content} />
                         </div>
                       </div>
@@ -598,15 +772,61 @@ export default function ChatPage() {
                 </div>
 
                 <div className="chat-composer">
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={reply}
-                    onChange={(event) => setReply(event.target.value)}
-                    onKeyDown={handleReplyKeyDown}
-                    placeholder="Nhap phan hoi cho user..."
-                  />
-                  <button className="btn btn-primary" onClick={handleSend} disabled={sending || !reply.trim()}>
+                  <div className="chat-composer-main">
+                    <AttachmentPreviewList attachments={attachments} onRemove={handleRemoveAttachment} />
+
+                    <div className="chat-composer-tools">
+                      <button
+                        type="button"
+                        className="chat-tool-button"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        📎 Gui anh / file
+                      </button>
+                      <button
+                        type="button"
+                        className={`chat-tool-button${isStickerPickerOpen ? ' active' : ''}`}
+                        onClick={() => setIsStickerPickerOpen((previous) => !previous)}
+                      >
+                        😊 Sticker
+                      </button>
+                    </div>
+
+                    {isStickerPickerOpen && (
+                      <div className="chat-sticker-picker">
+                        {STICKER_PRESETS.map((sticker) => (
+                          <button
+                            key={sticker.id}
+                            type="button"
+                            className="chat-sticker-button"
+                            onClick={() => handleAddSticker(sticker)}
+                            title={sticker.label}
+                          >
+                            <img src={sticker.dataUrl} alt={sticker.label} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={reply}
+                      onChange={(event) => setReply(event.target.value)}
+                      onKeyDown={handleReplyKeyDown}
+                      placeholder="Nhap phan hoi cho user..."
+                    />
+                    <input
+                      ref={fileInputRef}
+                      className="chat-hidden-input"
+                      type="file"
+                      accept={CHAT_ATTACHMENT_ACCEPT}
+                      multiple
+                      onChange={handleAttachmentFileChange}
+                    />
+                  </div>
+
+                  <button className="btn btn-primary" onClick={handleSend} disabled={sending || (!reply.trim() && attachments.length === 0)}>
                     {sending ? 'Dang gui...' : 'Gui phan hoi'}
                   </button>
                 </div>
