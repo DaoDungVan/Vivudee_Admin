@@ -46,6 +46,35 @@ const buildThreadPreview = (detail) => {
   }
 }
 
+const MESSAGE_COLLAPSE_CHAR_LIMIT = 280
+const MESSAGE_COLLAPSE_LINE_LIMIT = 4
+
+const shouldCollapseMessage = (content) => {
+  const text = String(content || '')
+  return text.length > MESSAGE_COLLAPSE_CHAR_LIMIT || text.split(/\r?\n/).length > MESSAGE_COLLAPSE_LINE_LIMIT
+}
+
+function ExpandableMessageText({ content }) {
+  const [expanded, setExpanded] = useState(false)
+  const text = String(content || '')
+  const canCollapse = shouldCollapseMessage(text)
+
+  return (
+    <>
+      <p className={`chat-message-text${canCollapse && !expanded ? ' collapsed' : ''}`}>{text}</p>
+      {canCollapse && (
+        <button
+          type="button"
+          className="chat-message-toggle"
+          onClick={() => setExpanded((previous) => !previous)}
+        >
+          {expanded ? 'Thu gon' : 'Xem them'}
+        </button>
+      )}
+    </>
+  )
+}
+
 export default function ChatPage() {
   const [threads, setThreads] = useState([])
   const [activeId, setActiveId] = useState(null)
@@ -57,10 +86,13 @@ export default function ChatPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false)
 
   const debouncedSearch = useDebouncedValue(search, 300)
   const messagesRef = useRef(null)
   const activeIdRef = useRef(null)
+  const shouldStickToBottomRef = useRef(true)
+  const pendingScrollToLatestRef = useRef(false)
   const detailRequestIdRef = useRef(0)
   const threadRequestIdRef = useRef(0)
   const selectedConversationRef = useRef(null)
@@ -74,6 +106,27 @@ export default function ChatPage() {
   useEffect(() => {
     activeIdRef.current = activeId
   }, [activeId])
+
+  const scrollMessagesToBottom = useCallback((behavior = 'smooth') => {
+    const element = messagesRef.current
+    if (!element) return
+
+    if (typeof element.scrollTo === 'function') {
+      element.scrollTo({ top: element.scrollHeight, behavior })
+      return
+    }
+
+    element.scrollTop = element.scrollHeight
+  }, [])
+
+  const handleMessagesScroll = useCallback(() => {
+    const element = messagesRef.current
+    if (!element) return
+
+    const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 80
+    shouldStickToBottomRef.current = isNearBottom
+    setShowJumpToLatest(!isNearBottom && (detail.messages?.length || 0) > 0)
+  }, [detail.messages])
 
   const syncThreadFromDetail = useCallback((nextDetail, { promote = false } = {}) => {
     const preview = buildThreadPreview(nextDetail)
@@ -275,12 +328,31 @@ export default function ChatPage() {
   }, [])
 
   useEffect(() => {
-    if (!messagesRef.current) {
+    if (!activeId) {
+      setShowJumpToLatest(false)
       return
     }
 
-    messagesRef.current.scrollTop = messagesRef.current.scrollHeight
-  }, [detail.messages])
+    pendingScrollToLatestRef.current = true
+    shouldStickToBottomRef.current = true
+    setShowJumpToLatest(false)
+  }, [activeId])
+
+  useEffect(() => {
+    const element = messagesRef.current
+    if (!element) return
+
+    if (pendingScrollToLatestRef.current || shouldStickToBottomRef.current) {
+      scrollMessagesToBottom(pendingScrollToLatestRef.current ? 'auto' : 'smooth')
+      pendingScrollToLatestRef.current = false
+      shouldStickToBottomRef.current = true
+      setShowJumpToLatest(false)
+      return
+    }
+
+    const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 80
+    setShowJumpToLatest(!isNearBottom && (detail.messages?.length || 0) > 0)
+  }, [detail.messages, scrollMessagesToBottom])
 
   const handleSelectThread = (conversationId) => {
     if (!conversationId || Number(conversationId) === Number(activeIdRef.current)) {
@@ -312,6 +384,8 @@ export default function ChatPage() {
     }
 
     setSending(true)
+    pendingScrollToLatestRef.current = true
+    shouldStickToBottomRef.current = true
     setDetail((currentDetail) => {
       const nextDetail = {
         conversation: currentDetail.conversation,
@@ -490,21 +564,37 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                <div className="chat-message-list" ref={messagesRef}>
-                  {(detail.messages || []).map((message) => (
-                    <div
-                      key={message.id}
-                      className={`chat-message-row${message.sender_role === 'admin' ? ' mine' : ''}`}
-                    >
-                      <div className={`chat-message-bubble${message.sender_role === 'assistant' ? ' chat-ai-bubble' : ''}`}>
-                        <div className="chat-message-meta">
-                          <span>{message.sender_name || (message.sender_role === 'admin' ? 'Admin' : 'User')}</span>
-                          <span>{new Date(message.created_at).toLocaleString('vi-VN')}</span>
+                <div className="chat-message-area">
+                  <div className="chat-message-list" ref={messagesRef} onScroll={handleMessagesScroll}>
+                    {(detail.messages || []).map((message) => (
+                      <div
+                        key={message.id}
+                        className={`chat-message-row${message.sender_role === 'admin' ? ' mine' : ''}`}
+                      >
+                        <div className={`chat-message-bubble${message.sender_role === 'assistant' ? ' chat-ai-bubble' : ''}`}>
+                          <div className="chat-message-meta">
+                            <span>{message.sender_name || (message.sender_role === 'admin' ? 'Admin' : 'User')}</span>
+                            <span>{new Date(message.created_at).toLocaleString('vi-VN')}</span>
+                          </div>
+                          <ExpandableMessageText content={message.content} />
                         </div>
-                        <p>{message.content}</p>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+
+                  {showJumpToLatest && (
+                    <button
+                      type="button"
+                      className="chat-jump-latest"
+                      onClick={() => {
+                        shouldStickToBottomRef.current = true
+                        scrollMessagesToBottom()
+                        setShowJumpToLatest(false)
+                      }}
+                    >
+                      Ve tin nhan moi nhat
+                    </button>
+                  )}
                 </div>
 
                 <div className="chat-composer">
