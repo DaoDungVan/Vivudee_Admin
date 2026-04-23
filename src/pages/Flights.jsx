@@ -587,18 +587,29 @@ export default function FlightsPage() {
                         <label className="form-label">Xach tay (kg)</label>
                         <input className="form-control" type="number" value={seat.carry_on_kg} onChange={(e) => setSeatField(index, 'carry_on_kg', e.target.value)} placeholder="7" />
                       </div>
-                      {BAGGAGE_PACKAGE_KGS.map((kg) => (
-                        <div className="form-group" key={kg}>
-                          <label className="form-label">Gia hanh ly {kg}kg (VND)</label>
-                          <input
-                            className="form-control"
-                            type="number"
-                            value={seat.extra_baggage_options?.[kg] ?? seat.extra_baggage_options?.[String(kg)] ?? '0'}
-                            onChange={(e) => setSeatBaggageOption(index, kg, e.target.value)}
-                            placeholder="0"
-                          />
+                      <div className="form-group full">
+                        <label className="form-label">Gia hanh ly mua them theo goi</label>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                            gap: 16,
+                          }}
+                        >
+                          {BAGGAGE_PACKAGE_KGS.map((kg) => (
+                            <div className="form-group" key={kg}>
+                              <label className="form-label">Gia hanh ly {kg}kg (VND)</label>
+                              <input
+                                className="form-control"
+                                type="number"
+                                value={seat.extra_baggage_options?.[kg] ?? seat.extra_baggage_options?.[String(kg)] ?? '0'}
+                                onChange={(e) => setSeatBaggageOption(index, kg, e.target.value)}
+                                placeholder="0"
+                              />
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
                       <div className="form-group full">
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                           Khong mua them hanh ly = 0 VND. User chi duoc chon 4 muc: khong mua, 5kg, 10kg, 20kg.
