@@ -8,10 +8,29 @@ const SORT_OPTIONS = [
   { value: 'desc', label: 'Chuyen moi nhat' },
   { value: 'asc', label: 'Chuyen cu nhat' },
 ]
+const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
+const SEAT_CLASS_LABELS = {
+  economy: 'Economy',
+  business: 'Business',
+  first: 'First Class',
+}
+const BAGGAGE_PACKAGE_KGS = [5, 10, 20]
 const SEAT_DEFAULTS = {
-  economy: { baggage_included_kg: '23', carry_on_kg: '7', extra_baggage_price: '0' },
-  business: { baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_price: '0' },
-  first: { baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_price: '0' },
+  economy: {
+    baggage_included_kg: '23',
+    carry_on_kg: '7',
+    extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' },
+  },
+  business: {
+    baggage_included_kg: '32',
+    carry_on_kg: '12',
+    extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' },
+  },
+  first: {
+    baggage_included_kg: '40',
+    carry_on_kg: '15',
+    extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' },
+  },
 }
 
 const createSeat = (seatClass = 'economy') => ({
@@ -20,6 +39,17 @@ const createSeat = (seatClass = 'economy') => ({
   base_price: '',
   ...SEAT_DEFAULTS[seatClass],
 })
+
+const normalizeBaggageOptions = (options, legacyExtraBaggagePrice = 0) => {
+  const fallbackPricePerKg = Number(legacyExtraBaggagePrice || 0)
+
+  return {
+    0: '0',
+    5: String(options?.[5] ?? options?.['5'] ?? (fallbackPricePerKg * 5)),
+    10: String(options?.[10] ?? options?.['10'] ?? (fallbackPricePerKg * 10)),
+    20: String(options?.[20] ?? options?.['20'] ?? (fallbackPricePerKg * 20)),
+  }
+}
 
 const normalizeSeatForForm = (seat = {}) => {
   const seatClass = seat.class || 'economy'
@@ -31,8 +61,16 @@ const normalizeSeatForForm = (seat = {}) => {
     base_price: seat.base_price ?? '',
     baggage_included_kg: seat.baggage_included_kg ?? defaults.baggage_included_kg,
     carry_on_kg: seat.carry_on_kg ?? defaults.carry_on_kg,
-    extra_baggage_price: seat.extra_baggage_price ?? defaults.extra_baggage_price,
+    extra_baggage_options: normalizeBaggageOptions(
+      seat.extra_baggage_options ?? defaults.extra_baggage_options,
+      seat.extra_baggage_price
+    ),
   }
+}
+
+const buildSeatFormList = (seats = []) => {
+  const seatMap = new Map((Array.isArray(seats) ? seats : []).map((seat) => [seat.class, seat]))
+  return SEAT_CLASS_ORDER.map((seatClass) => normalizeSeatForForm(seatMap.get(seatClass) || createSeat(seatClass)))
 }
 
 const matchesFlightSearch = (flight, keyword) => {
@@ -109,7 +147,7 @@ const createEmptyFlight = () => ({
   departure_time: '',
   arrival_time: '',
   duration_minutes: '',
-  seats: [createSeat('economy')],
+  seats: buildSeatFormList(),
 })
 
 const buildFlightPayload = (form) => ({
@@ -127,7 +165,12 @@ const buildFlightPayload = (form) => ({
         base_price: seat.base_price,
         baggage_included_kg: seat.baggage_included_kg,
         carry_on_kg: seat.carry_on_kg,
-        extra_baggage_price: seat.extra_baggage_price,
+        extra_baggage_options: {
+          0: 0,
+          5: Number(seat.extra_baggage_options?.[5] ?? seat.extra_baggage_options?.['5'] ?? 0),
+          10: Number(seat.extra_baggage_options?.[10] ?? seat.extra_baggage_options?.['10'] ?? 0),
+          20: Number(seat.extra_baggage_options?.[20] ?? seat.extra_baggage_options?.['20'] ?? 0),
+        },
       }))
     : [],
 })
@@ -238,7 +281,7 @@ export default function FlightsPage() {
       departure_time: flight.departure_time?.replace(' ', 'T').slice(0, 16) || '',
       arrival_time: flight.arrival_time?.replace(' ', 'T').slice(0, 16) || '',
       duration_minutes: flight.duration_minutes,
-      seats: flight.seats?.map((seat) => normalizeSeatForForm(seat)) || [createSeat('economy')],
+      seats: buildSeatFormList(flight.seats),
     })
     setError('')
     setModal('edit')
@@ -295,28 +338,20 @@ export default function FlightsPage() {
       ...p,
       seats: p.seats.map((seat, seatIndex) => (seatIndex === index ? { ...seat, [key]: value } : seat)),
     }))
-  const setSeatClass = (index, seatClass) =>
+  const setSeatBaggageOption = (index, kg, value) =>
     setForm((p) => ({
       ...p,
       seats: p.seats.map((seat, seatIndex) => (
         seatIndex === index
           ? {
               ...seat,
-              class: seatClass,
-              ...(SEAT_DEFAULTS[seatClass] || SEAT_DEFAULTS.economy),
+              extra_baggage_options: {
+                ...seat.extra_baggage_options,
+                [kg]: value,
+              },
             }
           : seat
       )),
-    }))
-  const addSeat = () =>
-    setForm((p) => ({
-      ...p,
-      seats: [...p.seats, createSeat('business')],
-    }))
-  const removeSeat = (index) =>
-    setForm((p) => ({
-      ...p,
-      seats: p.seats.filter((_, seatIndex) => seatIndex !== index),
     }))
 
   const clearFilters = () => {
@@ -527,25 +562,15 @@ export default function FlightsPage() {
                 <input className="form-control" type="number" value={form.duration_minutes} onChange={(e) => setField('duration_minutes', e.target.value)} placeholder="90" />
               </div>
               <div className="form-group full">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <label className="form-label">Hang ghe va gia ve</label>
-                  <button className="btn btn-secondary btn-sm" type="button" onClick={addSeat}>+ Them hang</button>
+                <div style={{ marginBottom: 10 }}>
+                  <label className="form-label">3 hang ghe co dinh va gia hanh ly theo goi</label>
                 </div>
                 {form.seats.map((seat, index) => (
-                  <div className="seat-row" key={index}>
+                  <div className="seat-row" key={seat.class}>
                     <div className="seat-row-header">
-                      <span>Hang ghe {index + 1}</span>
-                      {form.seats.length > 1 && <button className="btn btn-danger btn-sm" type="button" onClick={() => removeSeat(index)}>✕</button>}
+                      <span>{SEAT_CLASS_LABELS[seat.class] || `Hang ghe ${index + 1}`}</span>
                     </div>
                     <div className="form-grid">
-                      <div className="form-group">
-                        <label className="form-label">Hang</label>
-                        <select className="form-control" value={seat.class} onChange={(e) => setSeatClass(index, e.target.value)}>
-                          <option value="economy">Economy</option>
-                          <option value="business">Business</option>
-                          <option value="first">First Class</option>
-                        </select>
-                      </div>
                       <div className="form-group">
                         <label className="form-label">So ghe</label>
                         <input className="form-control" type="number" value={seat.total_seats} onChange={(e) => setSeatField(index, 'total_seats', e.target.value)} placeholder="180" />
@@ -562,9 +587,22 @@ export default function FlightsPage() {
                         <label className="form-label">Xach tay (kg)</label>
                         <input className="form-control" type="number" value={seat.carry_on_kg} onChange={(e) => setSeatField(index, 'carry_on_kg', e.target.value)} placeholder="7" />
                       </div>
+                      {BAGGAGE_PACKAGE_KGS.map((kg) => (
+                        <div className="form-group" key={kg}>
+                          <label className="form-label">Gia hanh ly {kg}kg (VND)</label>
+                          <input
+                            className="form-control"
+                            type="number"
+                            value={seat.extra_baggage_options?.[kg] ?? seat.extra_baggage_options?.[String(kg)] ?? '0'}
+                            onChange={(e) => setSeatBaggageOption(index, kg, e.target.value)}
+                            placeholder="0"
+                          />
+                        </div>
+                      ))}
                       <div className="form-group full">
-                        <label className="form-label">Gia hanh ly them (VND/kg)</label>
-                        <input className="form-control" type="number" value={seat.extra_baggage_price} onChange={(e) => setSeatField(index, 'extra_baggage_price', e.target.value)} placeholder="0" />
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                          Khong mua them hanh ly = 0 VND. User chi duoc chon 4 muc: khong mua, 5kg, 10kg, 20kg.
+                        </div>
                       </div>
                     </div>
                   </div>
