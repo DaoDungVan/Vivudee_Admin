@@ -32,25 +32,108 @@ const createStickerSvg = (emoji, startColor, endColor) => `
         <stop offset="0%" stop-color="${startColor}" />
         <stop offset="100%" stop-color="${endColor}" />
       </linearGradient>
+      <linearGradient id="gl" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.32)" />
+        <stop offset="55%" stop-color="rgba(255,255,255,0.04)" />
+        <stop offset="100%" stop-color="rgba(0,0,0,0.10)" />
+      </linearGradient>
     </defs>
-    <rect x="8" y="8" width="144" height="144" rx="36" fill="url(#g)" />
-    <circle cx="116" cy="44" r="18" fill="rgba(255,255,255,0.24)" />
-    <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-size="74">${emoji}</text>
+    <rect x="4" y="4" width="152" height="152" rx="42" fill="url(#g)" />
+    <rect x="4" y="4" width="152" height="152" rx="42" fill="url(#gl)" />
+    <circle cx="118" cy="38" r="24" fill="rgba(255,255,255,0.16)" />
+    <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="80">${emoji}</text>
   </svg>
 `
 
-export const STICKER_PRESETS = [
-  { id: 'smile', emoji: '😊', label: 'Smile', dataUrl: encodeSvgDataUrl(createStickerSvg('😊', '#f59e0b', '#f97316')) },
-  { id: 'love', emoji: '😍', label: 'Love', dataUrl: encodeSvgDataUrl(createStickerSvg('😍', '#ec4899', '#f43f5e')) },
-  { id: 'cool', emoji: '😎', label: 'Cool', dataUrl: encodeSvgDataUrl(createStickerSvg('😎', '#3b82f6', '#14b8a6')) },
-  { id: 'party', emoji: '🥳', label: 'Party', dataUrl: encodeSvgDataUrl(createStickerSvg('🥳', '#8b5cf6', '#ec4899')) },
-  { id: 'wow', emoji: '😮', label: 'Wow', dataUrl: encodeSvgDataUrl(createStickerSvg('😮', '#06b6d4', '#3b82f6')) },
-  { id: 'thanks', emoji: '🙏', label: 'Thanks', dataUrl: encodeSvgDataUrl(createStickerSvg('🙏', '#22c55e', '#14b8a6')) },
+export const STICKER_CATEGORIES = [
+  { id: 'all',      icon: '🎨', label: 'Tất cả' },
+  { id: 'emotions', icon: '😊', label: 'Cảm xúc' },
+  { id: 'gestures', icon: '👋', label: 'Cử chỉ' },
+  { id: 'travel',   icon: '✈️', label: 'Du lịch' },
+  { id: 'fun',      icon: '🎉', label: 'Vui vẻ' },
 ]
+
+const STICKER_DEFINITIONS = [
+  // Emotions
+  { id: 'smile',     emoji: '😊', label: 'Smile',     category: 'emotions' },
+  { id: 'love',      emoji: '😍', label: 'Love',      category: 'emotions' },
+  { id: 'cool',      emoji: '😎', label: 'Cool',      category: 'emotions' },
+  { id: 'laugh',     emoji: '😂', label: 'Laugh',     category: 'emotions' },
+  { id: 'wow',       emoji: '😮', label: 'Wow',       category: 'emotions' },
+  { id: 'cry',       emoji: '😭', label: 'Cry',       category: 'emotions' },
+  { id: 'angry',     emoji: '😡', label: 'Angry',     category: 'emotions' },
+  { id: 'sad',       emoji: '😔', label: 'Sad',       category: 'emotions' },
+  { id: 'kiss',      emoji: '😘', label: 'Kiss',      category: 'emotions' },
+  { id: 'wink',      emoji: '😉', label: 'Wink',      category: 'emotions' },
+  { id: 'blush',     emoji: '🥰', label: 'Blush',     category: 'emotions' },
+  { id: 'surprised', emoji: '😲', label: 'Surprised', category: 'emotions' },
+  { id: 'excited',   emoji: '🤩', label: 'Excited',   category: 'emotions' },
+  { id: 'thinking',  emoji: '🤔', label: 'Thinking',  category: 'emotions' },
+  { id: 'sleepy',    emoji: '😴', label: 'Sleepy',    category: 'emotions' },
+  { id: 'nervous',   emoji: '😰', label: 'Nervous',   category: 'emotions' },
+  // Gestures
+  { id: 'thumbs-up',   emoji: '👍', label: 'Like',       category: 'gestures' },
+  { id: 'thumbs-down', emoji: '👎', label: 'Dislike',    category: 'gestures' },
+  { id: 'clap',        emoji: '👏', label: 'Clap',       category: 'gestures' },
+  { id: 'ok',          emoji: '👌', label: 'OK',         category: 'gestures' },
+  { id: 'hello',       emoji: '👋', label: 'Hello',      category: 'gestures' },
+  { id: 'pray',        emoji: '🙏', label: 'Thanks',     category: 'gestures' },
+  { id: 'muscle',      emoji: '💪', label: 'Strong',     category: 'gestures' },
+  { id: 'call-me',     emoji: '🤙', label: 'Call me',    category: 'gestures' },
+  { id: 'hug',         emoji: '🤗', label: 'Hug',        category: 'gestures' },
+  { id: 'shrug',       emoji: '🤷', label: 'Shrug',      category: 'gestures' },
+  { id: 'facepalm',    emoji: '🤦', label: 'Facepalm',   category: 'gestures' },
+  { id: 'raise-hand',  emoji: '🙋', label: 'Raise hand', category: 'gestures' },
+  // Travel
+  { id: 'plane',    emoji: '✈️', label: 'Plane',    category: 'travel' },
+  { id: 'luggage',  emoji: '🧳', label: 'Luggage',  category: 'travel' },
+  { id: 'globe',    emoji: '🌍', label: 'Globe',    category: 'travel' },
+  { id: 'camera',   emoji: '📸', label: 'Camera',   category: 'travel' },
+  { id: 'compass',  emoji: '🧭', label: 'Compass',  category: 'travel' },
+  { id: 'beach',    emoji: '🏖️', label: 'Beach',    category: 'travel' },
+  { id: 'mountain', emoji: '🏔️', label: 'Mountain', category: 'travel' },
+  { id: 'map',      emoji: '🗺️', label: 'Map',      category: 'travel' },
+  // Fun
+  { id: 'party',     emoji: '🥳', label: 'Party',     category: 'fun' },
+  { id: 'celebrate', emoji: '🎉', label: 'Celebrate', category: 'fun' },
+  { id: 'rocket',    emoji: '🚀', label: 'Rocket',    category: 'fun' },
+  { id: 'fire',      emoji: '🔥', label: 'Fire',      category: 'fun' },
+  { id: 'star',      emoji: '⭐', label: 'Star',      category: 'fun' },
+  { id: 'heart',     emoji: '❤️', label: 'Heart',     category: 'fun' },
+  { id: 'gift',      emoji: '🎁', label: 'Gift',      category: 'fun' },
+  { id: 'crown',     emoji: '👑', label: 'Crown',     category: 'fun' },
+  { id: 'trophy',    emoji: '🏆', label: 'Trophy',    category: 'fun' },
+  { id: 'rainbow',   emoji: '🌈', label: 'Rainbow',   category: 'fun' },
+  { id: 'coffee',    emoji: '☕', label: 'Coffee',    category: 'fun' },
+  { id: 'diamond',   emoji: '💎', label: 'Diamond',   category: 'fun' },
+]
+
+const STICKER_TONES = [
+  ['#f59e0b', '#f97316'],
+  ['#ec4899', '#f43f5e'],
+  ['#3b82f6', '#14b8a6'],
+  ['#8b5cf6', '#ec4899'],
+  ['#06b6d4', '#3b82f6'],
+  ['#22c55e', '#14b8a6'],
+  ['#ef4444', '#f97316'],
+  ['#a855f7', '#6366f1'],
+  ['#0ea5e9', '#6366f1'],
+  ['#10b981', '#06b6d4'],
+  ['#f97316', '#eab308'],
+  ['#6366f1', '#8b5cf6'],
+]
+
+export const STICKER_PRESETS = STICKER_DEFINITIONS.map((item, index) => {
+  const [startColor, endColor] = STICKER_TONES[index % STICKER_TONES.length]
+  return {
+    ...item,
+    dataUrl: encodeSvgDataUrl(createStickerSvg(item.emoji, startColor, endColor)),
+  }
+})
 
 const ensureAttachmentCapacity = (existingCount, incomingCount) => {
   if (existingCount + incomingCount > MAX_ATTACHMENTS_PER_MESSAGE) {
-    throw new Error(`Chi duoc gui toi da ${MAX_ATTACHMENTS_PER_MESSAGE} tep trong mot tin nhan.`)
+    throw new Error(`Chỉ được gửi tối đa ${MAX_ATTACHMENTS_PER_MESSAGE} tệp trong một tin nhắn.`)
   }
 }
 
@@ -58,7 +141,7 @@ const readFileAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(new Error('Khong doc duoc tep dinh kem.'))
+    reader.onerror = () => reject(new Error('Không đọc được tệp đính kèm.'))
     reader.readAsDataURL(file)
   })
 
@@ -74,7 +157,7 @@ const loadImageFromFile = (file) =>
 
     image.onerror = () => {
       URL.revokeObjectURL(objectUrl)
-      reject(new Error('Khong doc duoc anh dinh kem.'))
+      reject(new Error('Không đọc được ảnh đính kèm.'))
     }
 
     image.src = objectUrl
@@ -84,7 +167,7 @@ const optimizeImageFile = async (file) => {
   if (file.type === 'image/svg+xml') {
     const rawDataUrl = await readFileAsDataUrl(file)
     if (rawDataUrl.length > MAX_ATTACHMENT_DATA_URL_LENGTH) {
-      throw new Error('Anh SVG qua lon. Vui long chon file nho hon.')
+      throw new Error('Ảnh SVG quá lớn. Vui lòng chọn file nhỏ hơn.')
     }
     return rawDataUrl
   }
@@ -101,7 +184,7 @@ const optimizeImageFile = async (file) => {
 
   const context = canvas.getContext('2d')
   if (!context) {
-    throw new Error('Trinh duyet khong ho tro xu ly anh.')
+    throw new Error('Trình duyệt không hỗ trợ xử lý ảnh.')
   }
 
   context.drawImage(image, 0, 0, width, height)
@@ -116,7 +199,7 @@ const optimizeImageFile = async (file) => {
   }
 
   if (output.length > MAX_ATTACHMENT_DATA_URL_LENGTH) {
-    throw new Error('Anh qua lon sau khi toi uu. Vui long chon anh nho hon.')
+    throw new Error('Ảnh quá lớn sau khi tối ưu. Vui lòng chọn ảnh nhỏ hơn.')
   }
 
   return output
@@ -129,7 +212,7 @@ const normalizeAttachmentName = (name, fallback) => {
 
 const createImageAttachment = async (file) => {
   if (file.size > MAX_IMAGE_FILE_SIZE) {
-    throw new Error('Anh dinh kem phai nho hon 2MB.')
+    throw new Error('Ảnh đính kèm phải nhỏ hơn 2MB.')
   }
 
   const dataUrl = await optimizeImageFile(file)
@@ -146,12 +229,12 @@ const createImageAttachment = async (file) => {
 
 const createFileAttachment = async (file) => {
   if (file.size > MAX_FILE_SIZE) {
-    throw new Error('File dinh kem phai nho hon 3MB.')
+    throw new Error('File đính kèm phải nhỏ hơn 3MB.')
   }
 
   const dataUrl = await readFileAsDataUrl(file)
   if (dataUrl.length > MAX_ATTACHMENT_DATA_URL_LENGTH) {
-    throw new Error('File dinh kem qua lon. Vui long chon file nho hon.')
+    throw new Error('File đính kèm quá lớn. Vui lòng chọn file nhỏ hơn.')
   }
 
   return {
@@ -183,7 +266,7 @@ export const createAttachmentsFromFiles = async (files, existingCount = 0) => {
 
 export const createStickerAttachment = (sticker) => {
   if (!sticker?.dataUrl) {
-    throw new Error('Sticker khong hop le.')
+    throw new Error('Sticker không hợp lệ.')
   }
 
   return {
@@ -196,11 +279,6 @@ export const createStickerAttachment = (sticker) => {
     sticker_id: sticker.id || null,
     label: sticker.label || '',
   }
-}
-
-export const canAddSticker = (existingCount) => {
-  ensureAttachmentCapacity(existingCount, 1)
-  return true
 }
 
 export const formatAttachmentSize = (value) => {

@@ -9,8 +9,8 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { createSocketConnection } from '../socket'
 import {
   CHAT_ATTACHMENT_ACCEPT,
+  STICKER_CATEGORIES,
   STICKER_PRESETS,
-  canAddSticker,
   createAttachmentsFromFiles,
   createStickerAttachment,
   formatAttachmentSize,
@@ -18,18 +18,18 @@ import {
 } from '../utils/chatAttachments'
 
 const STATUS_OPTIONS = [
-  { value: '', label: 'Tat ca trang thai' },
-  { value: 'open', label: 'San sang ho tro' },
-  { value: 'pending_admin', label: 'Cho admin' },
-  { value: 'pending_user', label: 'Cho user' },
-  { value: 'resolved', label: 'Da xu ly' },
+  { value: '', label: 'Tất cả trạng thái' },
+  { value: 'open', label: 'Sẵn sàng hỗ trợ' },
+  { value: 'pending_admin', label: 'Chờ admin' },
+  { value: 'pending_user', label: 'Chờ user' },
+  { value: 'resolved', label: 'Đã xử lý' },
 ]
 
 const STATUS_LABELS = {
-  open: 'San sang ho tro',
-  pending_admin: 'Cho admin',
-  pending_user: 'Cho user',
-  resolved: 'Da xu ly',
+  open: 'Sẵn sàng',
+  pending_admin: 'Chờ admin',
+  pending_user: 'Chờ user',
+  resolved: 'Đã xử lý',
 }
 
 const emptyDetail = { conversation: null, messages: [] }
@@ -197,6 +197,7 @@ export default function ChatPage() {
   const [reply, setReply] = useState('')
   const [attachments, setAttachments] = useState([])
   const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false)
+  const [stickerCategory, setStickerCategory] = useState('all')
   const [loadingList, setLoadingList] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [sending, setSending] = useState(false)
@@ -309,7 +310,7 @@ export default function ChatPage() {
       })
     } catch (err) {
       if (!silent) {
-        setError(err.response?.data?.error || 'Khong tai duoc danh sach hoi thoai')
+        setError(err.response?.data?.error || 'Không tải được danh sách hội thoại')
       }
     } finally {
       if (!silent && threadRequestIdRef.current === requestId) {
@@ -373,7 +374,7 @@ export default function ChatPage() {
       setError('')
     } catch (err) {
       if (!silent && detailRequestIdRef.current === requestId) {
-        setError(err.response?.data?.error || 'Khong tai duoc noi dung hoi thoai')
+        setError(err.response?.data?.error || 'Không tải được nội dung hội thoại')
       }
     } finally {
       if (!silent && detailRequestIdRef.current === requestId) {
@@ -497,21 +498,64 @@ export default function ChatPage() {
       setAttachments((previous) => [...previous, ...nextAttachments])
       setError('')
     } catch (attachmentError) {
-      setError(attachmentError?.message || 'Khong tai duoc tep dinh kem')
+      setError(attachmentError?.message || 'Không tải được tệp đính kèm')
     } finally {
       event.target.value = ''
     }
   }
 
-  const handleAddSticker = (sticker) => {
+  const handleSendStickerDirectly = async (sticker) => {
+    if (sending || !activeId) return
+
+    let stickerAttachment
     try {
-      canAddSticker(attachments.length)
-      const nextAttachment = createStickerAttachment(sticker)
-      setAttachments((previous) => [...previous, nextAttachment])
-      setIsStickerPickerOpen(false)
-      setError('')
-    } catch (attachmentError) {
-      setError(attachmentError?.message || 'Khong them duoc sticker')
+      stickerAttachment = createStickerAttachment(sticker)
+    } catch (err) {
+      setError(err?.message || 'Không thêm được sticker')
+      return
+    }
+
+    const conversationId = activeId
+    const optimisticMessage = {
+      id: `optimistic-sticker-${Date.now()}`,
+      content: '',
+      preview: '[Sticker]',
+      created_at: new Date().toISOString(),
+      sender_name: 'Admin',
+      sender_role: 'admin',
+      meta: { attachments: [stickerAttachment] },
+    }
+
+    setSending(true)
+    setIsStickerPickerOpen(false)
+    setError('')
+    pendingScrollToLatestRef.current = true
+    shouldStickToBottomRef.current = true
+
+    setDetail((currentDetail) => {
+      const nextDetail = {
+        conversation: currentDetail.conversation,
+        messages: [...(currentDetail.messages || []), optimisticMessage],
+      }
+      cacheConversationDetail(conversationId, nextDetail)
+      syncThreadFromDetail(nextDetail, { promote: true })
+      return nextDetail
+    })
+
+    try {
+      const res = await sendChatReply(conversationId, { message: '', attachments: [stickerAttachment] })
+      const nextDetail = res.data?.data || emptyDetail
+      cacheConversationDetail(conversationId, nextDetail)
+      syncThreadFromDetail(nextDetail, { promote: true })
+      if (Number(activeIdRef.current) === Number(conversationId)) {
+        setDetail(nextDetail)
+      }
+      loadThreads({ silent: true })
+    } catch (err) {
+      setError(err.response?.data?.error || 'Không gửi được sticker')
+      loadConversation(conversationId, { silent: true, force: true })
+    } finally {
+      setSending(false)
     }
   }
 
@@ -575,7 +619,7 @@ export default function ChatPage() {
     } catch (err) {
       setReply(message)
       setAttachments(outgoingAttachments)
-      setError(err.response?.data?.error || 'Khong gui duoc phan hoi')
+      setError(err.response?.data?.error || 'Không gửi được phản hồi')
       loadConversation(conversationId, { silent: true, force: true })
     } finally {
       setSending(false)
@@ -618,7 +662,7 @@ export default function ChatPage() {
 
       loadThreads({ silent: true })
     } catch (err) {
-      setError(err.response?.data?.error || 'Khong cap nhat duoc trang thai')
+      setError(err.response?.data?.error || 'Không cập nhật được trạng thái')
       loadConversation(conversationId, { silent: true, force: true })
     }
   }
@@ -644,8 +688,8 @@ export default function ChatPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">Hop thu ho tro</div>
-          <div className="page-subtitle">User o ben trai, khung support o ben phai</div>
+          <div className="page-title">Hộp thư hỗ trợ</div>
+          <div className="page-subtitle">Danh sách cuộc trò chuyện bên trái — nội dung chat bên phải</div>
         </div>
       </div>
 
@@ -660,7 +704,7 @@ export default function ChatPage() {
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Tim user theo ten, email..."
+                  placeholder="Tìm user theo tên, email..."
                 />
               </div>
               <select className="filter-select" value={status} onChange={(event) => setStatus(event.target.value)}>
@@ -675,7 +719,7 @@ export default function ChatPage() {
             ) : threads.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">💬</div>
-                <div className="empty-text">Chua co hoi thoai support nao</div>
+                <div className="empty-text">Chưa có hội thoại hỗ trợ nào</div>
               </div>
             ) : (
               <div className="chat-thread-list">
@@ -691,7 +735,7 @@ export default function ChatPage() {
                       {thread.unread_count > 0 && <span className="chat-unread-badge">{thread.unread_count}</span>}
                     </div>
                     <div className="chat-thread-email">{thread.user?.email}</div>
-                    <div className="chat-thread-preview">{thread.last_message_preview || 'Chua co tin nhan'}</div>
+                    <div className="chat-thread-preview">{thread.last_message_preview || 'Chưa có tin nhắn'}</div>
                     <div className="chat-thread-foot">
                       <span className={`badge ${thread.status === 'resolved' ? 'badge-success' : thread.status === 'pending_admin' ? 'badge-danger' : 'badge-info'}`}>
                         {STATUS_LABELS[thread.status] || thread.status}
@@ -708,7 +752,7 @@ export default function ChatPage() {
             {!activeId ? (
               <div className="empty-state">
                 <div className="empty-icon">🗂️</div>
-                <div className="empty-text">Chon mot user de xem cuoc tro chuyen</div>
+                <div className="empty-text">Chọn một user để xem cuộc trò chuyện</div>
               </div>
             ) : loadingDetail ? (
               <div className="loading-wrap"><div className="spinner" /></div>
@@ -717,7 +761,7 @@ export default function ChatPage() {
                 <div className="chat-detail-header">
                   <div>
                     <div className="chat-detail-title">
-                      {detail.conversation?.user?.full_name || detail.conversation?.user?.email || 'Hoi thoai support'}
+                      {detail.conversation?.user?.full_name || detail.conversation?.user?.email || 'Hội thoại hỗ trợ'}
                     </div>
                     <div className="chat-detail-subtitle">
                       {detail.conversation?.user?.email} {detail.conversation?.user?.phone ? `· ${detail.conversation.user.phone}` : ''}
@@ -760,13 +804,14 @@ export default function ChatPage() {
                     <button
                       type="button"
                       className="chat-jump-latest"
+                      aria-label="Xuống tin nhắn mới nhất"
                       onClick={() => {
                         shouldStickToBottomRef.current = true
                         scrollMessagesToBottom()
                         setShowJumpToLatest(false)
                       }}
                     >
-                      Ve tin nhan moi nhat
+                      ↓
                     </button>
                   )}
                 </div>
@@ -781,30 +826,47 @@ export default function ChatPage() {
                         className="chat-tool-button"
                         onClick={() => fileInputRef.current?.click()}
                       >
-                        📎 Gui anh / file
+                        📎 Ảnh / File
                       </button>
                       <button
                         type="button"
                         className={`chat-tool-button${isStickerPickerOpen ? ' active' : ''}`}
                         onClick={() => setIsStickerPickerOpen((previous) => !previous)}
                       >
-                        😊 Sticker
+                        🙂 Sticker
                       </button>
                     </div>
 
                     {isStickerPickerOpen && (
                       <div className="chat-sticker-picker">
-                        {STICKER_PRESETS.map((sticker) => (
-                          <button
-                            key={sticker.id}
-                            type="button"
-                            className="chat-sticker-button"
-                            onClick={() => handleAddSticker(sticker)}
-                            title={sticker.label}
-                          >
-                            <img src={sticker.dataUrl} alt={sticker.label} />
-                          </button>
-                        ))}
+                        <div className="chat-sticker-categories">
+                          {STICKER_CATEGORIES.map((cat) => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              className={`chat-sticker-category-btn${stickerCategory === cat.id ? ' active' : ''}`}
+                              onClick={() => setStickerCategory(cat.id)}
+                              title={cat.label}
+                            >
+                              {cat.icon}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="chat-sticker-grid">
+                          {STICKER_PRESETS
+                            .filter((s) => stickerCategory === 'all' || s.category === stickerCategory)
+                            .map((sticker) => (
+                              <button
+                                key={sticker.id}
+                                type="button"
+                                className="chat-sticker-button"
+                                onClick={() => handleSendStickerDirectly(sticker)}
+                                title={sticker.label}
+                              >
+                                <img src={sticker.dataUrl} alt={sticker.label} />
+                              </button>
+                            ))}
+                        </div>
                       </div>
                     )}
 
@@ -814,7 +876,7 @@ export default function ChatPage() {
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
                       onKeyDown={handleReplyKeyDown}
-                      placeholder="Nhap phan hoi cho user..."
+                      placeholder="Nhập phản hồi cho user..."
                     />
                     <input
                       ref={fileInputRef}
@@ -827,7 +889,7 @@ export default function ChatPage() {
                   </div>
 
                   <button className="btn btn-primary" onClick={handleSend} disabled={sending || (!reply.trim() && attachments.length === 0)}>
-                    {sending ? 'Dang gui...' : 'Gui phan hoi'}
+                    {sending ? '⏳ Đang gửi...' : '↗ Gửi'}
                   </button>
                 </div>
               </>
