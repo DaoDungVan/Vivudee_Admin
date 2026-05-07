@@ -25,7 +25,7 @@ const createAttachmentId = (prefix = 'attachment') =>
 
 const encodeSvgDataUrl = (svg) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
 
-const createStickerSvg = (emoji, startColor, endColor) => `
+const createIconSvg = (emoji, startColor, endColor) => `
   <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
     <defs>
       <linearGradient id="g" x1="0%" x2="100%" y1="0%" y2="100%">
@@ -45,70 +45,66 @@ const createStickerSvg = (emoji, startColor, endColor) => `
   </svg>
 `
 
-export const STICKER_CATEGORIES = [
-  { id: 'all',      icon: '🎨', label: 'Tất cả' },
+export const CHAT_ICON_CATEGORIES = [
+  { id: 'all', icon: '🎨', label: 'Tất cả' },
   { id: 'emotions', icon: '😊', label: 'Cảm xúc' },
   { id: 'gestures', icon: '👋', label: 'Cử chỉ' },
-  { id: 'travel',   icon: '✈️', label: 'Du lịch' },
-  { id: 'fun',      icon: '🎉', label: 'Vui vẻ' },
+  { id: 'travel', icon: '✈️', label: 'Du lịch' },
+  { id: 'fun', icon: '🎉', label: 'Vui vẻ' },
 ]
 
-const STICKER_DEFINITIONS = [
-  // Emotions
-  { id: 'smile',     emoji: '😊', label: 'Smile',     category: 'emotions' },
-  { id: 'love',      emoji: '😍', label: 'Love',      category: 'emotions' },
-  { id: 'cool',      emoji: '😎', label: 'Cool',      category: 'emotions' },
-  { id: 'laugh',     emoji: '😂', label: 'Laugh',     category: 'emotions' },
-  { id: 'wow',       emoji: '😮', label: 'Wow',       category: 'emotions' },
-  { id: 'cry',       emoji: '😭', label: 'Cry',       category: 'emotions' },
-  { id: 'angry',     emoji: '😡', label: 'Angry',     category: 'emotions' },
-  { id: 'sad',       emoji: '😔', label: 'Sad',       category: 'emotions' },
-  { id: 'kiss',      emoji: '😘', label: 'Kiss',      category: 'emotions' },
-  { id: 'wink',      emoji: '😉', label: 'Wink',      category: 'emotions' },
-  { id: 'blush',     emoji: '🥰', label: 'Blush',     category: 'emotions' },
+const ICON_DEFINITIONS = [
+  { id: 'smile', emoji: '😊', label: 'Smile', category: 'emotions' },
+  { id: 'love', emoji: '😍', label: 'Love', category: 'emotions' },
+  { id: 'cool', emoji: '😎', label: 'Cool', category: 'emotions' },
+  { id: 'laugh', emoji: '😂', label: 'Laugh', category: 'emotions' },
+  { id: 'wow', emoji: '😮', label: 'Wow', category: 'emotions' },
+  { id: 'cry', emoji: '😭', label: 'Cry', category: 'emotions' },
+  { id: 'angry', emoji: '😡', label: 'Angry', category: 'emotions' },
+  { id: 'sad', emoji: '😔', label: 'Sad', category: 'emotions' },
+  { id: 'kiss', emoji: '😘', label: 'Kiss', category: 'emotions' },
+  { id: 'wink', emoji: '😉', label: 'Wink', category: 'emotions' },
+  { id: 'blush', emoji: '🥰', label: 'Blush', category: 'emotions' },
   { id: 'surprised', emoji: '😲', label: 'Surprised', category: 'emotions' },
-  { id: 'excited',   emoji: '🤩', label: 'Excited',   category: 'emotions' },
-  { id: 'thinking',  emoji: '🤔', label: 'Thinking',  category: 'emotions' },
-  { id: 'sleepy',    emoji: '😴', label: 'Sleepy',    category: 'emotions' },
-  { id: 'nervous',   emoji: '😰', label: 'Nervous',   category: 'emotions' },
-  // Gestures
-  { id: 'thumbs-up',   emoji: '👍', label: 'Like',       category: 'gestures' },
-  { id: 'thumbs-down', emoji: '👎', label: 'Dislike',    category: 'gestures' },
-  { id: 'clap',        emoji: '👏', label: 'Clap',       category: 'gestures' },
-  { id: 'ok',          emoji: '👌', label: 'OK',         category: 'gestures' },
-  { id: 'hello',       emoji: '👋', label: 'Hello',      category: 'gestures' },
-  { id: 'pray',        emoji: '🙏', label: 'Thanks',     category: 'gestures' },
-  { id: 'muscle',      emoji: '💪', label: 'Strong',     category: 'gestures' },
-  { id: 'call-me',     emoji: '🤙', label: 'Call me',    category: 'gestures' },
-  { id: 'hug',         emoji: '🤗', label: 'Hug',        category: 'gestures' },
-  { id: 'shrug',       emoji: '🤷', label: 'Shrug',      category: 'gestures' },
-  { id: 'facepalm',    emoji: '🤦', label: 'Facepalm',   category: 'gestures' },
-  { id: 'raise-hand',  emoji: '🙋', label: 'Raise hand', category: 'gestures' },
-  // Travel
-  { id: 'plane',    emoji: '✈️', label: 'Plane',    category: 'travel' },
-  { id: 'luggage',  emoji: '🧳', label: 'Luggage',  category: 'travel' },
-  { id: 'globe',    emoji: '🌍', label: 'Globe',    category: 'travel' },
-  { id: 'camera',   emoji: '📸', label: 'Camera',   category: 'travel' },
-  { id: 'compass',  emoji: '🧭', label: 'Compass',  category: 'travel' },
-  { id: 'beach',    emoji: '🏖️', label: 'Beach',    category: 'travel' },
+  { id: 'excited', emoji: '🤩', label: 'Excited', category: 'emotions' },
+  { id: 'thinking', emoji: '🤔', label: 'Thinking', category: 'emotions' },
+  { id: 'sleepy', emoji: '😴', label: 'Sleepy', category: 'emotions' },
+  { id: 'nervous', emoji: '😰', label: 'Nervous', category: 'emotions' },
+  { id: 'thumbs-up', emoji: '👍', label: 'Like', category: 'gestures' },
+  { id: 'thumbs-down', emoji: '👎', label: 'Dislike', category: 'gestures' },
+  { id: 'clap', emoji: '👏', label: 'Clap', category: 'gestures' },
+  { id: 'ok', emoji: '👌', label: 'OK', category: 'gestures' },
+  { id: 'hello', emoji: '👋', label: 'Hello', category: 'gestures' },
+  { id: 'pray', emoji: '🙏', label: 'Thanks', category: 'gestures' },
+  { id: 'muscle', emoji: '💪', label: 'Strong', category: 'gestures' },
+  { id: 'call-me', emoji: '🤙', label: 'Call me', category: 'gestures' },
+  { id: 'hug', emoji: '🤗', label: 'Hug', category: 'gestures' },
+  { id: 'shrug', emoji: '🤷', label: 'Shrug', category: 'gestures' },
+  { id: 'facepalm', emoji: '🤦', label: 'Facepalm', category: 'gestures' },
+  { id: 'raise-hand', emoji: '🙋', label: 'Raise hand', category: 'gestures' },
+  { id: 'plane', emoji: '✈️', label: 'Plane', category: 'travel' },
+  { id: 'luggage', emoji: '🧳', label: 'Luggage', category: 'travel' },
+  { id: 'globe', emoji: '🌍', label: 'Globe', category: 'travel' },
+  { id: 'camera', emoji: '📸', label: 'Camera', category: 'travel' },
+  { id: 'compass', emoji: '🧭', label: 'Compass', category: 'travel' },
+  { id: 'beach', emoji: '🏖️', label: 'Beach', category: 'travel' },
   { id: 'mountain', emoji: '🏔️', label: 'Mountain', category: 'travel' },
-  { id: 'map',      emoji: '🗺️', label: 'Map',      category: 'travel' },
-  // Fun
-  { id: 'party',     emoji: '🥳', label: 'Party',     category: 'fun' },
+  { id: 'map', emoji: '🗺️', label: 'Map', category: 'travel' },
+  { id: 'party', emoji: '🥳', label: 'Party', category: 'fun' },
   { id: 'celebrate', emoji: '🎉', label: 'Celebrate', category: 'fun' },
-  { id: 'rocket',    emoji: '🚀', label: 'Rocket',    category: 'fun' },
-  { id: 'fire',      emoji: '🔥', label: 'Fire',      category: 'fun' },
-  { id: 'star',      emoji: '⭐', label: 'Star',      category: 'fun' },
-  { id: 'heart',     emoji: '❤️', label: 'Heart',     category: 'fun' },
-  { id: 'gift',      emoji: '🎁', label: 'Gift',      category: 'fun' },
-  { id: 'crown',     emoji: '👑', label: 'Crown',     category: 'fun' },
-  { id: 'trophy',    emoji: '🏆', label: 'Trophy',    category: 'fun' },
-  { id: 'rainbow',   emoji: '🌈', label: 'Rainbow',   category: 'fun' },
-  { id: 'coffee',    emoji: '☕', label: 'Coffee',    category: 'fun' },
-  { id: 'diamond',   emoji: '💎', label: 'Diamond',   category: 'fun' },
+  { id: 'rocket', emoji: '🚀', label: 'Rocket', category: 'fun' },
+  { id: 'fire', emoji: '🔥', label: 'Fire', category: 'fun' },
+  { id: 'star', emoji: '⭐', label: 'Star', category: 'fun' },
+  { id: 'heart', emoji: '❤️', label: 'Heart', category: 'fun' },
+  { id: 'gift', emoji: '🎁', label: 'Gift', category: 'fun' },
+  { id: 'crown', emoji: '👑', label: 'Crown', category: 'fun' },
+  { id: 'trophy', emoji: '🏆', label: 'Trophy', category: 'fun' },
+  { id: 'rainbow', emoji: '🌈', label: 'Rainbow', category: 'fun' },
+  { id: 'coffee', emoji: '☕', label: 'Coffee', category: 'fun' },
+  { id: 'diamond', emoji: '💎', label: 'Diamond', category: 'fun' },
 ]
 
-const STICKER_TONES = [
+const ICON_TONES = [
   ['#f59e0b', '#f97316'],
   ['#ec4899', '#f43f5e'],
   ['#3b82f6', '#14b8a6'],
@@ -123,13 +119,16 @@ const STICKER_TONES = [
   ['#6366f1', '#8b5cf6'],
 ]
 
-export const STICKER_PRESETS = STICKER_DEFINITIONS.map((item, index) => {
-  const [startColor, endColor] = STICKER_TONES[index % STICKER_TONES.length]
+export const CHAT_ICON_PRESETS = ICON_DEFINITIONS.map((item, index) => {
+  const [startColor, endColor] = ICON_TONES[index % ICON_TONES.length]
   return {
     ...item,
-    dataUrl: encodeSvgDataUrl(createStickerSvg(item.emoji, startColor, endColor)),
+    dataUrl: encodeSvgDataUrl(createIconSvg(item.emoji, startColor, endColor)),
   }
 })
+
+export const STICKER_CATEGORIES = CHAT_ICON_CATEGORIES
+export const STICKER_PRESETS = CHAT_ICON_PRESETS
 
 const ensureAttachmentCapacity = (existingCount, incomingCount) => {
   if (existingCount + incomingCount > MAX_ATTACHMENTS_PER_MESSAGE) {
@@ -266,13 +265,13 @@ export const createAttachmentsFromFiles = async (files, existingCount = 0) => {
 
 export const createStickerAttachment = (sticker) => {
   if (!sticker?.dataUrl) {
-    throw new Error('Sticker không hợp lệ.')
+    throw new Error('Icon không hợp lệ.')
   }
 
   return {
     id: createAttachmentId('sticker'),
     type: 'sticker',
-    name: `${sticker.id || 'sticker'}.svg`,
+    name: `${sticker.id || 'icon'}.svg`,
     mime_type: 'image/svg+xml',
     size: sticker.dataUrl.length,
     data_url: sticker.dataUrl,
@@ -295,4 +294,9 @@ export const formatAttachmentSize = (value) => {
 export const getMessageAttachments = (message) => {
   const attachments = message?.meta?.attachments
   return Array.isArray(attachments) ? attachments : []
+}
+
+export const isVisualAttachment = (attachment) => {
+  const type = String(attachment?.type || '')
+  return type === 'image' || type === 'sticker' || type === 'icon'
 }

@@ -9,12 +9,12 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { createSocketConnection } from '../socket'
 import {
   CHAT_ATTACHMENT_ACCEPT,
-  STICKER_CATEGORIES,
-  STICKER_PRESETS,
+  CHAT_ICON_CATEGORIES,
+  CHAT_ICON_PRESETS,
   createAttachmentsFromFiles,
-  createStickerAttachment,
   formatAttachmentSize,
   getMessageAttachments,
+  isVisualAttachment,
 } from '../utils/chatAttachments'
 
 const STATUS_OPTIONS = [
@@ -44,7 +44,7 @@ const buildAttachmentPreview = (attachments = []) => {
   if (!attachments.length) return ''
   if (attachments.length === 1) {
     const [attachment] = attachments
-    if (attachment.type === 'sticker') return '[Sticker]'
+    if (attachment.type === 'sticker' || attachment.type === 'icon') return '[Icon]'
     if (attachment.type === 'image') return `[Hinh anh] ${attachment.name || ''}`.trim()
     return `[File] ${attachment.name || ''}`.trim()
   }
@@ -115,11 +115,15 @@ function MessageAttachments({ message, onMediaLoad }) {
       {attachments.map((attachment, index) => {
         const key = attachment.id || `${attachment.type}-${index}`
 
-        if (attachment.type === 'image' || attachment.type === 'sticker') {
+        if (isVisualAttachment(attachment)) {
           return (
             <a
               key={key}
-              className={`chat-image-attachment${attachment.type === 'sticker' ? ' chat-sticker-attachment' : ''}`}
+              className={`chat-image-attachment${
+                attachment.type === 'sticker' || attachment.type === 'icon'
+                  ? ' chat-sticker-attachment'
+                  : ''
+              }`}
               href={attachment.data_url}
               download={attachment.name || undefined}
               target="_blank"
@@ -161,9 +165,11 @@ function AttachmentPreviewList({ attachments, onRemove }) {
     <div className="chat-composer-preview-list">
       {attachments.map((attachment) => (
         <div key={attachment.id} className="chat-composer-preview-item">
-          {attachment.type === 'image' || attachment.type === 'sticker' ? (
+          {isVisualAttachment(attachment) ? (
             <img
-              className={`chat-composer-preview-thumb${attachment.type === 'sticker' ? ' sticker' : ''}`}
+              className={`chat-composer-preview-thumb${
+                attachment.type === 'sticker' || attachment.type === 'icon' ? ' sticker' : ''
+              }`}
               src={attachment.data_url}
               alt={attachment.label || attachment.name || 'attachment'}
             />
@@ -507,23 +513,15 @@ export default function ChatPage() {
   const handleSendStickerDirectly = async (sticker) => {
     if (sending || !activeId) return
 
-    let stickerAttachment
-    try {
-      stickerAttachment = createStickerAttachment(sticker)
-    } catch (err) {
-      setError(err?.message || 'Không thêm được sticker')
-      return
-    }
-
     const conversationId = activeId
     const optimisticMessage = {
-      id: `optimistic-sticker-${Date.now()}`,
-      content: '',
-      preview: '[Sticker]',
+      id: `optimistic-icon-${Date.now()}`,
+      content: sticker.emoji,
+      preview: sticker.emoji,
       created_at: new Date().toISOString(),
       sender_name: 'Admin',
       sender_role: 'admin',
-      meta: { attachments: [stickerAttachment] },
+      meta: { attachments: [] },
     }
 
     setSending(true)
@@ -543,7 +541,7 @@ export default function ChatPage() {
     })
 
     try {
-      const res = await sendChatReply(conversationId, { message: '', attachments: [stickerAttachment] })
+      const res = await sendChatReply(conversationId, { message: sticker.emoji })
       const nextDetail = res.data?.data || emptyDetail
       cacheConversationDetail(conversationId, nextDetail)
       syncThreadFromDetail(nextDetail, { promote: true })
@@ -552,7 +550,7 @@ export default function ChatPage() {
       }
       loadThreads({ silent: true })
     } catch (err) {
-      setError(err.response?.data?.error || 'Không gửi được sticker')
+      setError(err.response?.data?.error || 'Không gửi được biểu tượng')
       loadConversation(conversationId, { silent: true, force: true })
     } finally {
       setSending(false)
@@ -833,14 +831,14 @@ export default function ChatPage() {
                         className={`chat-tool-button${isStickerPickerOpen ? ' active' : ''}`}
                         onClick={() => setIsStickerPickerOpen((previous) => !previous)}
                       >
-                        🙂 Sticker
+                        🙂 Biểu tượng
                       </button>
                     </div>
 
                     {isStickerPickerOpen && (
                       <div className="chat-sticker-picker">
                         <div className="chat-sticker-categories">
-                          {STICKER_CATEGORIES.map((cat) => (
+                          {CHAT_ICON_CATEGORIES.map((cat) => (
                             <button
                               key={cat.id}
                               type="button"
@@ -853,7 +851,7 @@ export default function ChatPage() {
                           ))}
                         </div>
                         <div className="chat-sticker-grid">
-                          {STICKER_PRESETS
+                          {CHAT_ICON_PRESETS
                             .filter((s) => stickerCategory === 'all' || s.category === stickerCategory)
                             .map((sticker) => (
                               <button
