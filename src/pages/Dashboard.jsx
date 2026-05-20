@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getStatistics, getFlights, getUsers, getBookings } from '../api'
+import { getStatistics, getFlights, getUsers, getBookings, runLoyaltyRecalc, runExpiredBookings, runCronJob } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const fmtCurrency = (n) => {
@@ -40,6 +40,8 @@ export default function DashboardPage() {
   const [counts, setCounts]     = useState({ flights: 0, users: 0, bookings: 0 })
   const [loading, setLoading]   = useState(true)
   const [dateRange, setDateRange] = useState({ from_date: '', to_date: '' })
+  const [cronLoading, setCronLoading] = useState('')
+  const [cronMsg, setCronMsg]   = useState('')
 
   const load = () => {
     setLoading(true)
@@ -74,13 +76,29 @@ export default function DashboardPage() {
 
   useEffect(() => { load() }, []) // eslint-disable-line
 
+  const runCron = async (label, fn) => {
+    setCronLoading(label)
+    setCronMsg('')
+    try {
+      const res = await fn()
+      setCronMsg(`✓ ${label}: ${res.data?.message || 'Thành công'}`)
+    } catch (e) {
+      setCronMsg(`✗ ${label}: ${e.response?.data?.error || e.response?.data?.message || 'Lỗi'}`)
+    } finally {
+      setCronLoading('')
+      setTimeout(() => setCronMsg(''), 6000)
+    }
+  }
+
   const overview        = stats?.overview || {}
   const bookingSummary  = stats?.booking_summary  || []  // [{status, count, revenue}]
   const dailyRevenue    = stats?.daily_revenue    || []  // [{date, bookings, revenue}]
   const popularFlights  = stats?.popular_flights  || []  // [{flight_number, airline, from_city, to_city, total_bookings}]
 
-  const totalBookings = Number(overview.total_bookings) || 0
-  const totalRevenue  = Number(overview.total_revenue)  || 0
+  const totalBookings  = Number(overview.total_bookings)  || 0
+  const totalRevenue   = Number(overview.total_revenue)   || 0
+  const totalRefunded  = Number(overview.total_refunded)  || 0
+  const netRevenue     = totalRevenue - totalRefunded
 
   return (
     <>
@@ -125,10 +143,10 @@ export default function DashboardPage() {
           <>
             {/* Stat cards */}
             <div className="stat-grid">
-              <StatCard icon="🎫" value={fmt(totalBookings)}       label="Tổng đặt vé (confirmed+pending)" color="var(--accent-light)" bg="var(--info-bg)" />
-              <StatCard icon="💰" value={fmtCurrency(totalRevenue)} label="Doanh thu" color="var(--success)"      bg="var(--success-bg)" />
-              <StatCard icon="✈️" value={fmt(counts.flights)}       label="Tổng chuyến bay" color="var(--warning)" bg="var(--warning-bg)" />
-              <StatCard icon="👥" value={fmt(counts.users)}         label="Tổng người dùng" color="var(--info)"    bg="var(--info-bg)" />
+              <StatCard icon="🎫" value={fmt(totalBookings)}        label="Tổng đặt vé"        color="var(--accent-light)" bg="var(--info-bg)" />
+              <StatCard icon="💰" value={fmtCurrency(netRevenue)}  label="Doanh thu thực (sau hoàn)" color="var(--success)" bg="var(--success-bg)" />
+              <StatCard icon="↩️" value={fmtCurrency(totalRefunded)} label="Đã hoàn tiền"     color="var(--danger)"       bg="var(--danger-bg)" />
+              <StatCard icon="👥" value={fmt(counts.users)}         label="Tổng người dùng"   color="var(--info)"         bg="var(--info-bg)" />
             </div>
 
             {/* Row 2 */}
@@ -230,6 +248,38 @@ export default function DashboardPage() {
                 })()}
               </div>
             </div>
+          {/* System Tools — Cronjob manual trigger */}
+          <div className="card" style={{ marginTop: 8 }}>
+            <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 15 }}>⚙️ Công cụ hệ thống</div>
+            {cronMsg && (
+              <div className={`alert ${cronMsg.startsWith('✓') ? 'alert-success' : 'alert-danger'}`} style={{ marginBottom: 12, fontSize: 13 }}>
+                {cronMsg}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={!!cronLoading}
+                onClick={() => runCron('Tính điểm thành viên', runLoyaltyRecalc)}
+              >
+                {cronLoading === 'Tính điểm thành viên' ? '...' : '🏅 Tính lại điểm thành viên'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={!!cronLoading}
+                onClick={() => runCron('Xử lý booking hết hạn', runExpiredBookings)}
+              >
+                {cronLoading === 'Xử lý booking hết hạn' ? '...' : '⌛ Xử lý booking hết hạn'}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={!!cronLoading}
+                onClick={() => runCron('Chạy tất cả cronjob', () => runCronJob('all'))}
+              >
+                {cronLoading === 'Chạy tất cả cronjob' ? '...' : '▶ Chạy tất cả cronjob'}
+              </button>
+            </div>
+          </div>
           </>
         )}
       </div>

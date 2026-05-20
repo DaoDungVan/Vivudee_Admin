@@ -61,6 +61,16 @@ export const updateCoupon    = (id, data) => api.put(`/admin/coupons/${id}`, dat
 export const deleteCoupon    = (id)       => api.delete(`/admin/coupons/${id}`)
 export const toggleCoupon    = (id, isActive) => api.patch(`/admin/coupons/${id}/status`, { is_active: !isActive })
 
+// ─── Cronjob ───────────────────────────────────────────────────────────────
+export const runCronJob           = (type) => api.post('/admin/cron/run', { type })
+export const runLoyaltyRecalc     = ()     => api.post('/admin/loyalty/recalculate')
+export const runExpiredBookings   = ()     => api.post('/admin/cron/expired-bookings')
+
+// ─── Refunds ───────────────────────────────────────────────────────────────
+export const getAdminRefunds      = (params) => api.get('/admin/refunds', { params })
+export const approveRefund        = (code)   => api.patch(`/admin/refunds/${code}/approve`)
+export const rejectRefund         = (code, reason) => api.patch(`/admin/refunds/${code}/reject`, { reason })
+
 // Chat support
 export const getChatConversations = (params) => api.get('/admin/chat/conversations', { params })
 export const getChatConversationById = (id) => api.get(`/admin/chat/conversations/${id}`)

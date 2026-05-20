@@ -12,6 +12,7 @@ const navItems = [
   { to: '/bookings', icon: '🎫', label: 'Đặt Vé' },
   { to: '/coupons', icon: '🏷️', label: 'Coupon' },
   { to: '/chat', icon: '💬', label: 'Hỗ Trợ Chat' },
+  { to: '/refunds', icon: '↩️', label: 'Hoàn Tiền' },
 ]
 
 export default function Layout() {
