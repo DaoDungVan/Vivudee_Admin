@@ -10,7 +10,9 @@ export default function SystemPage() {
     setCronMsg('')
     try {
       const res = await fn()
-      setCronMsg({ ok: true, text: `✓ ${label}: ${res.data?.message || 'Thành công'}` })
+      const msg = res.data?.message || 'Thành công'
+      const extraNote = res.data?.data?.updated === 0 ? ' (Tất cả đã đúng, không cần cập nhật)' : ''
+      setCronMsg({ ok: true, text: `✓ ${label}: ${msg}${extraNote}` })
     } catch (e) {
       setCronMsg({ ok: false, text: `✗ ${label}: ${e.response?.data?.error || e.response?.data?.message || 'Lỗi'}` })
     } finally {
