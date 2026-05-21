@@ -11,6 +11,7 @@ import BookingsPage from './pages/Bookings'
 import CouponsPage from './pages/Coupons'
 import ChatPage from './pages/Chat'
 import RefundsPage from './pages/Refunds'
+import SystemPage from './pages/System'
 
 function PrivateRoute({ children }) {
   const { token, user } = useAuth()
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="coupons" element={<CouponsPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="refunds" element={<RefundsPage />} />
+            <Route path="system" element={<SystemPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

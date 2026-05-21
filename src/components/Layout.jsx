@@ -13,6 +13,7 @@ const navItems = [
   { to: '/coupons', icon: '🏷️', label: 'Coupon' },
   { to: '/chat', icon: '💬', label: 'Hỗ Trợ Chat' },
   { to: '/refunds', icon: '↩️', label: 'Hoàn Tiền' },
+  { to: '/system',  icon: '⚙️', label: 'Hệ Thống' },
 ]
 
 export default function Layout() {
