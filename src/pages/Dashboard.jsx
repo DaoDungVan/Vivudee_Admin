@@ -72,7 +72,11 @@ export default function DashboardPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, []) // eslint-disable-line
+  useEffect(() => {
+    load()
+    const interval = setInterval(load, 5_000)
+    return () => clearInterval(interval)
+  }, []) // eslint-disable-line
 
 
   const overview        = stats?.overview || {}
@@ -109,6 +113,10 @@ export default function DashboardPage() {
             onChange={e => setDateRange(p => ({ ...p, to_date: e.target.value }))}
             style={{ fontSize: 13 }}
           />
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+            Tự động cập nhật 5s
+          </span>
           <button className="btn btn-primary btn-sm" onClick={load}>Lọc</button>
           <button className="btn btn-secondary btn-sm" onClick={() => { setDateRange({ from_date: '', to_date: '' }); setTimeout(load, 0) }}>Xoá lọc</button>
           <div className="admin-badge">
@@ -168,14 +176,16 @@ export default function DashboardPage() {
               <div className="card">
                 <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>💡 Chi tiết tổng quan</div>
                 {[
-                  ['Tổng đặt vé hợp lệ',  fmt(overview.total_bookings)],
-                  ['Đã xác nhận',          fmt(overview.confirmed)],
-                  ['Đang chờ',             fmt(overview.pending)],
-                  ['Đã huỷ',               fmt(overview.cancelled)],
-                  ['Hết hạn',              fmt(overview.expired)],
-                  ['Tổng hành khách',      fmt(overview.total_passengers)],
-                  ['Tổng doanh thu',       fmtCurrency(overview.total_revenue)],
-                  ['Tổng booking hệ thống', fmt(counts.bookings)],
+                  ['Tổng đặt vé hợp lệ',       fmt(overview.total_bookings)],
+                  ['Đã xác nhận',               fmt(overview.confirmed)],
+                  ['Đang chờ',                  fmt(overview.pending)],
+                  ['Đã huỷ',                    fmt(overview.cancelled)],
+                  ['Hết hạn',                   fmt(overview.expired)],
+                  ['Tổng hành khách',            fmt(overview.total_passengers)],
+                  ['Tổng doanh thu (gộp)',       fmtCurrency(overview.total_revenue)],
+                  ['Đã hoàn tiền',               fmtCurrency(overview.total_refunded)],
+                  ['Doanh thu thực (sau hoàn)',  fmtCurrency(netRevenue)],
+                  ['Tổng booking hệ thống',      fmt(counts.bookings)],
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
                     <span style={{ color: 'var(--text-secondary)' }}>{k}</span>

@@ -563,6 +563,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 /* Empty */
 .empty-state {
