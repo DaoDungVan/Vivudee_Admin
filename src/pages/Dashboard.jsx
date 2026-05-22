@@ -41,8 +41,8 @@ export default function DashboardPage() {
   const [loading, setLoading]   = useState(true)
   const [dateRange, setDateRange] = useState({ from_date: '', to_date: '' })
 
-  const load = () => {
-    setLoading(true)
+  const load = (silent = false) => {
+    if (!silent) setLoading(true)
 
     // Lấy thống kê chính
     const statParams = {}
@@ -74,7 +74,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
-    const interval = setInterval(load, 5_000)
+    const interval = setInterval(() => load(true), 5_000)
     return () => clearInterval(interval)
   }, []) // eslint-disable-line
 
