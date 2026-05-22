@@ -8,6 +8,8 @@ const SORT_OPTIONS = [
   { value: 'desc', label: 'Chuyen moi nhat' },
   { value: 'asc', label: 'Chuyen cu nhat' },
 ]
+const fmtPrice = (n) => n ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n)) : '—'
+
 const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
 const SEAT_CLASS_LABELS = {
   economy: 'Economy',
@@ -287,8 +289,19 @@ export default function FlightsPage() {
     setModal('edit')
   }
 
+  const SEAT_MAX = { economy: 200, business: 80, first: 20 }
+
   const handleSave = async () => {
     if (saveLockRef.current) return
+
+    for (const seat of form.seats) {
+      const n = Number(seat.total_seats)
+      const max = SEAT_MAX[seat.class]
+      if (max && n > max) {
+        setError(`${SEAT_CLASS_LABELS[seat.class]} tối đa ${max} ghế (hiện tại: ${n})`)
+        return
+      }
+    }
 
     saveLockRef.current = true
     setSaving(true)
@@ -435,6 +448,7 @@ export default function FlightsPage() {
                     <th>Khoi hanh</th>
                     <th>Den noi</th>
                     <th>Thoi gian</th>
+                    <th>Gia (Economy / Business / First)</th>
                     <th>Trang thai</th>
                     <th>Hien thi</th>
                     <th>Hanh dong</th>
@@ -457,6 +471,12 @@ export default function FlightsPage() {
                       <td style={{ fontSize: 12 }}>{flight.arrival_time ? formatRawDateTime(flight.arrival_time) : '—'}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                         {flight.duration_minutes ? `${Math.floor(flight.duration_minutes / 60)}h${flight.duration_minutes % 60 ? `${flight.duration_minutes % 60}m` : ''}` : '—'}
+                      </td>
+                      <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                        {['economy','business','first'].map(cls => {
+                          const s = (flight.seats || []).find(s => s.class === cls)
+                          return s ? <div key={cls}><span style={{ color: 'var(--text-muted)', textTransform: 'capitalize' }}>{cls}: </span>{fmtPrice(s.base_price)}</div> : null
+                        })}
                       </td>
                       <td>
                         <select
@@ -573,7 +593,7 @@ export default function FlightsPage() {
                     <div className="form-grid">
                       <div className="form-group">
                         <label className="form-label">So ghe</label>
-                        <input className="form-control" type="number" value={seat.total_seats} onChange={(e) => setSeatField(index, 'total_seats', e.target.value)} placeholder="180" />
+                        <input className="form-control" type="number" value={seat.total_seats} onChange={(e) => setSeatField(index, 'total_seats', e.target.value)} placeholder={SEAT_MAX[seat.class]} min="1" max={SEAT_MAX[seat.class]} />
                       </div>
                       <div className="form-group full">
                         <label className="form-label">Gia co ban (VND)</label>

@@ -186,14 +186,14 @@ export default function RefundsPage() {
                       <button
                         className="btn btn-success btn-sm"
                         disabled={!!actionLoading}
-                        onClick={() => handleApprove(r.refund_code)}
+                        onClick={() => handleApprove(r.refund_code || r.id)}
                       >
-                        {actionLoading === r.refund_code + '_approve' ? '...' : '✓ Duyệt'}
+                        {actionLoading === (r.refund_code || r.id) + '_approve' ? '...' : '✓ Duyệt'}
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
                         disabled={!!actionLoading}
-                        onClick={() => { setRejectModal(r.refund_code); setRejectReason(''); setError('') }}
+                        onClick={() => { setRejectModal(r.refund_code || r.id); setRejectReason(''); setError('') }}
                       >
                         ✕ Từ chối
                       </button>
