@@ -69,6 +69,7 @@ export const runExpiredBookings   = ()     => api.post('/admin/cron/expired-book
 // ─── Refunds ───────────────────────────────────────────────────────────────
 export const getAdminRefunds      = (params) => api.get('/admin/refunds', { params })
 export const approveRefund        = (code, adminNotes = '') => api.post(`/admin/refunds/${code}/approve`, { admin_notes: adminNotes })
+export const completeRefund       = (code) => api.post(`/admin/refunds/${code}/complete`, {})
 export const rejectRefund         = (code, reason) => api.post(`/admin/refunds/${code}/reject`, { reason })
 
 // Chat support

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getAdminRefunds, approveRefund, rejectRefund } from '../api'
+import { getAdminRefunds, approveRefund, completeRefund, rejectRefund } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const STATUS_BADGE = {
@@ -11,9 +11,9 @@ const STATUS_BADGE = {
 }
 const STATUS_LABEL = {
   pending:   '⏳ Chờ xử lý',
-  approved:  '✓ Đã duyệt',
+  approved:  '✓ Đã duyệt – chờ chấp nhận',
   rejected:  '✕ Từ chối',
-  completed: '✓ Hoàn tiền xong',
+  completed: '💸 Hoàn tiền xong',
   cancelled: '— Đã huỷ',
 }
 
@@ -78,6 +78,20 @@ export default function RefundsPage() {
       load()
     } catch (e) {
       setError(e.response?.data?.error || e.response?.data?.message || 'Lỗi khi duyệt')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleComplete = async (code) => {
+    if (!window.confirm(`Xác nhận chấp nhận hoàn tiền ${code}? Tiền sẽ được hoàn cho khách.`)) return
+    setActionLoading(code + '_complete')
+    setError('')
+    try {
+      await completeRefund(code)
+      load()
+    } catch (e) {
+      setError(e.response?.data?.error || e.response?.data?.message || 'Lỗi khi chấp nhận hoàn tiền')
     } finally {
       setActionLoading(null)
     }
@@ -198,6 +212,14 @@ export default function RefundsPage() {
                         ✕ Từ chối
                       </button>
                     </div>
+                  ) : r.status?.toLowerCase() === 'approved' ? (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={!!actionLoading}
+                      onClick={() => handleComplete(r.refund_code || r.id)}
+                    >
+                      {actionLoading === (r.refund_code || r.id) + '_complete' ? '...' : '💸 Chấp nhận hoàn tiền'}
+                    </button>
                   ) : (
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>—</span>
                   )}
