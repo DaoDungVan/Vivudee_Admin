@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { LuSearch, LuMessageSquare, LuChevronDown, LuPaperclip, LuSmile, LuHourglass, LuSend, LuX, LuFolderOpen } from 'react-icons/lu'
 import {
   getChatConversations,
   getChatConversationById,
@@ -21,19 +22,19 @@ const STATUS_OPTIONS = [
   { value: '', label: 'Tất cả trạng thái' },
   { value: 'open', label: 'Sẵn sàng hỗ trợ' },
   { value: 'pending_admin', label: 'Chờ admin' },
-  { value: 'pending_user', label: 'Chờ user' },
+  { value: 'pending_user', label: 'Chờ người dùng' },
   { value: 'resolved', label: 'Đã xử lý' },
 ]
 
 const STATUS_LABELS = {
   open: 'Sẵn sàng',
   pending_admin: 'Chờ admin',
-  pending_user: 'Chờ user',
+  pending_user: 'Chờ người dùng',
   resolved: 'Đã xử lý',
 }
 
 const emptyDetail = { conversation: null, messages: [] }
-const DETAIL_CACHE_TTL = 15000
+const DETAIL_CACHE_TTL = 120000
 
 const cloneDetail = (detail) => ({
   conversation: detail?.conversation ? { ...detail.conversation } : null,
@@ -96,7 +97,7 @@ function ExpandableMessageText({ content }) {
           className="chat-message-toggle"
           onClick={() => setExpanded((previous) => !previous)}
         >
-          {expanded ? 'Thu gon' : 'Xem them'}
+          {expanded ? 'Thu gọn' : 'Xem thêm'}
         </button>
       )}
     </>
@@ -143,12 +144,12 @@ function MessageAttachments({ message, onMediaLoad }) {
             target="_blank"
             rel="noreferrer"
           >
-            <div className="chat-file-attachment-title">{attachment.name || 'File dinh kem'}</div>
+            <div className="chat-file-attachment-title">{attachment.name || 'Tệp đính kèm'}</div>
             <div className="chat-file-attachment-meta">
               <span>{attachment.mime_type || 'file'}</span>
               <span>{formatAttachmentSize(attachment.size)}</span>
             </div>
-            <span className="chat-file-attachment-link">Tai file</span>
+            <span className="chat-file-attachment-link">Tải tệp</span>
           </a>
         )
       })}
@@ -184,9 +185,9 @@ function AttachmentPreviewList({ attachments, onRemove }) {
             type="button"
             className="chat-composer-preview-remove"
             onClick={() => onRemove(attachment.id)}
-            aria-label="Xoa dinh kem"
+            aria-label="Xóa đính kèm"
           >
-            ×
+            <LuX size={14}/>
           </button>
         </div>
       ))}
@@ -304,14 +305,9 @@ export default function ChatPage() {
       setError('')
 
       setActiveId((previousActiveId) => {
-        if (!previousActiveId && nextThreads[0]) {
-          return nextThreads[0].id
-        }
-
         if (previousActiveId && !nextThreads.find((item) => Number(item.id) === Number(previousActiveId))) {
-          return nextThreads[0]?.id || null
+          return null
         }
-
         return previousActiveId
       })
     } catch (err) {
@@ -698,7 +694,7 @@ export default function ChatPage() {
           <aside className="chat-thread-panel">
             <div className="chat-thread-toolbar">
               <div className="search-box">
-                <span className="search-icon">🔍</span>
+                <span className="search-icon"><LuSearch size={16}/></span>
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -716,7 +712,7 @@ export default function ChatPage() {
               <div className="loading-wrap"><div className="spinner" /></div>
             ) : threads.length === 0 ? (
               <div className="empty-state">
-                <div className="empty-icon">💬</div>
+                <div className="empty-icon"><LuMessageSquare size={36}/></div>
                 <div className="empty-text">Chưa có hội thoại hỗ trợ nào</div>
               </div>
             ) : (
@@ -749,7 +745,7 @@ export default function ChatPage() {
           <section className="chat-detail-panel">
             {!activeId ? (
               <div className="empty-state">
-                <div className="empty-icon">🗂️</div>
+                <div className="empty-icon"><LuFolderOpen size={36}/></div>
                 <div className="empty-text">Chọn một user để xem cuộc trò chuyện</div>
               </div>
             ) : loadingDetail ? (
@@ -809,7 +805,7 @@ export default function ChatPage() {
                         setShowJumpToLatest(false)
                       }}
                     >
-                      ↓
+                      <LuChevronDown size={20}/>
                     </button>
                   )}
                 </div>
@@ -824,14 +820,14 @@ export default function ChatPage() {
                         className="chat-tool-button"
                         onClick={() => fileInputRef.current?.click()}
                       >
-                        📎 Ảnh / File
+                        <LuPaperclip size={15}/> Ảnh / File
                       </button>
                       <button
                         type="button"
                         className={`chat-tool-button${isStickerPickerOpen ? ' active' : ''}`}
                         onClick={() => setIsStickerPickerOpen((previous) => !previous)}
                       >
-                        🙂 Biểu tượng
+                        <LuSmile size={15}/> Biểu tượng
                       </button>
                     </div>
 
@@ -874,7 +870,7 @@ export default function ChatPage() {
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
                       onKeyDown={handleReplyKeyDown}
-                      placeholder="Nhập phản hồi cho user..."
+                      placeholder="Nhập phản hồi cho khách..."
                     />
                     <input
                       ref={fileInputRef}
@@ -887,7 +883,7 @@ export default function ChatPage() {
                   </div>
 
                   <button className="btn btn-primary" onClick={handleSend} disabled={sending || (!reply.trim() && attachments.length === 0)}>
-                    {sending ? '⏳ Đang gửi...' : '↗ Gửi'}
+                    {sending ? <><LuHourglass size={14}/> Đang gửi...</> : <><LuSend size={14}/> Gửi</>}
                   </button>
                 </div>
               </>

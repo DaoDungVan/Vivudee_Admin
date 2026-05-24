@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { getStatistics, getFlights, getUsers, getBookings } from '../api'
 import { useAuth } from '../context/AuthContext'
+import {
+  LuLayoutDashboard, LuTicket, LuCircleDollarSign, LuUndo2, LuUsers,
+  LuChartBar, LuLightbulb, LuTrophy, LuCalendarDays, LuPlane, LuArrowRight,
+} from 'react-icons/lu'
 
 const fmtCurrency = (n) => {
   if (n == null || n === '' || isNaN(Number(n))) return '—'
@@ -19,7 +23,7 @@ const fmt = (n) => {
 function StatCard({ icon, value, label, color, bg }) {
   return (
     <div className="stat-card">
-      <div className="stat-icon" style={{ background: bg, fontSize: '22px' }}>{icon}</div>
+      <div className="stat-icon" style={{ background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
       <div className="stat-value" style={{ color }}>{value}</div>
       <div className="stat-label">{label}</div>
     </div>
@@ -44,14 +48,12 @@ export default function DashboardPage() {
   const load = (silent = false) => {
     if (!silent) setLoading(true)
 
-    // Lấy thống kê chính
     const statParams = {}
     if (dateRange.from_date && dateRange.to_date) {
       statParams.from_date = dateRange.from_date
       statParams.to_date   = dateRange.to_date
     }
 
-    // Lấy tổng số flights, users, bookings song song
     Promise.all([
       getStatistics(statParams),
       getFlights({ page: 1, limit: 1, show_hidden: true }),
@@ -59,9 +61,7 @@ export default function DashboardPage() {
       getBookings({ page: 1, limit: 1 }),
     ])
       .then(([statRes, flightRes, userRes, bookingRes]) => {
-        // Statistics: res.data.data = { overview, booking_summary, daily_revenue, popular_flights }
         setStats(statRes.data?.data || statRes.data || {})
-
         setCounts({
           flights:  flightRes.data?.pagination?.total  ?? 0,
           users:    userRes.data?.pagination?.total    ?? 0,
@@ -80,9 +80,9 @@ export default function DashboardPage() {
 
 
   const overview        = stats?.overview || {}
-  const bookingSummary  = stats?.booking_summary  || []  // [{status, count, revenue}]
-  const dailyRevenue    = stats?.daily_revenue    || []  // [{date, bookings, revenue}]
-  const popularFlights  = stats?.popular_flights  || []  // [{flight_number, airline, from_city, to_city, total_bookings}]
+  const bookingSummary  = stats?.booking_summary  || []
+  const dailyRevenue    = stats?.daily_revenue    || []
+  const popularFlights  = stats?.popular_flights  || []
 
   const totalBookings  = Number(overview.total_bookings)  || 0
   const totalRevenue   = Number(overview.total_revenue)   || 0
@@ -93,11 +93,10 @@ export default function DashboardPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">📊 Dashboard</div>
+          <div className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LuLayoutDashboard size={20}/> Bảng điều khiển</div>
           <div className="page-subtitle">Tổng quan hệ thống Vivudee</div>
         </div>
         <div className="header-right" style={{ gap: 10 }}>
-          {/* Date range filter */}
           <input
             type="date"
             className="filter-select"
@@ -105,7 +104,7 @@ export default function DashboardPage() {
             onChange={e => setDateRange(p => ({ ...p, from_date: e.target.value }))}
             style={{ fontSize: 13 }}
           />
-          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>→</span>
+          <LuArrowRight size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }}/>
           <input
             type="date"
             className="filter-select"
@@ -134,22 +133,19 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {/* Stat cards */}
             <div className="stat-grid">
-              <StatCard icon="🎫" value={fmt(totalBookings)}        label="Tổng đặt vé"        color="var(--accent-light)" bg="var(--info-bg)" />
-              <StatCard icon="💰" value={fmtCurrency(netRevenue)}  label="Doanh thu thực (sau hoàn)" color="var(--success)" bg="var(--success-bg)" />
-              <StatCard icon="↩️" value={fmtCurrency(totalRefunded)} label="Đã hoàn tiền"     color="var(--danger)"       bg="var(--danger-bg)" />
-              <StatCard icon="👥" value={fmt(counts.users)}         label="Tổng người dùng"   color="var(--info)"         bg="var(--info-bg)" />
+              <StatCard icon={<LuTicket size={22} color="var(--accent-light)"/>}          value={fmt(totalBookings)}        label="Tổng đặt vé"              color="var(--accent-light)" bg="var(--info-bg)" />
+              <StatCard icon={<LuCircleDollarSign size={22} color="var(--success)"/>}     value={fmtCurrency(netRevenue)}   label="Doanh thu thực (sau hoàn)" color="var(--success)"      bg="var(--success-bg)" />
+              <StatCard icon={<LuUndo2 size={22} color="var(--danger)"/>}                 value={fmtCurrency(totalRefunded)} label="Đã hoàn tiền"             color="var(--danger)"       bg="var(--danger-bg)" />
+              <StatCard icon={<LuUsers size={22} color="var(--info)"/>}                   value={fmt(counts.users)}         label="Tổng người dùng"          color="var(--info)"         bg="var(--info-bg)" />
             </div>
 
-            {/* Row 2 */}
             <div className="responsive-two-col" style={{ marginBottom: 20 }}>
 
-              {/* Booking Summary */}
               <div className="card">
-                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>📊 Đặt vé theo trạng thái</div>
+                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}><LuChartBar size={16}/> Đặt vé theo trạng thái</div>
                 {bookingSummary.length === 0 ? (
-                  <div className="empty-state"><div className="empty-icon">📊</div><div className="empty-text">Không có dữ liệu</div></div>
+                  <div className="empty-state"><div className="empty-icon"><LuChartBar size={36}/></div><div className="empty-text">Không có dữ liệu</div></div>
                 ) : bookingSummary.map(row => {
                   const pct = totalBookings > 0 ? (Number(row.count) / totalBookings) * 100 : 0
                   const color = STATUS_COLOR[row.status] || STATUS_COLOR.default
@@ -172,9 +168,8 @@ export default function DashboardPage() {
                 })}
               </div>
 
-              {/* Overview breakdown */}
               <div className="card">
-                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>💡 Chi tiết tổng quan</div>
+                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}><LuLightbulb size={16}/> Chi tiết tổng quan</div>
                 {[
                   ['Tổng đặt vé hợp lệ',       fmt(overview.total_bookings)],
                   ['Đã xác nhận',               fmt(overview.confirmed)],
@@ -195,14 +190,12 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Row 3 */}
             <div className="responsive-two-col">
 
-              {/* Popular flights */}
               <div className="card">
-                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>🏆 Chuyến bay phổ biến nhất</div>
+                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}><LuTrophy size={16}/> Chuyến bay phổ biến nhất</div>
                 {popularFlights.length === 0 ? (
-                  <div className="empty-state"><div className="empty-icon">✈️</div><div className="empty-text">Không có dữ liệu</div></div>
+                  <div className="empty-state"><div className="empty-icon"><LuPlane size={36}/></div><div className="empty-text">Không có dữ liệu</div></div>
                 ) : popularFlights.map((f, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '10px', background: 'var(--bg-input)', borderRadius: 8 }}>
                     <span style={{ width: 28, height: 28, background: i === 0 ? 'var(--warning)' : 'var(--bg-card)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: i === 0 ? '#000' : 'var(--text-secondary)', flexShrink: 0 }}>#{i+1}</span>
@@ -212,17 +205,16 @@ export default function DashboardPage() {
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <div style={{ fontWeight: 700, color: 'var(--accent-light)' }}>{f.total_bookings}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>bookings</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>lượt đặt</div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Daily revenue */}
               <div className="card">
-                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15 }}>📅 Doanh thu 7 ngày gần nhất</div>
+                <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 15, display: 'flex', alignItems: 'center', gap: 7 }}><LuCalendarDays size={16}/> Doanh thu 7 ngày gần nhất</div>
                 {dailyRevenue.length === 0 ? (
-                  <div className="empty-state"><div className="empty-icon">📅</div><div className="empty-text">Không có dữ liệu</div></div>
+                  <div className="empty-state"><div className="empty-icon"><LuCalendarDays size={36}/></div><div className="empty-text">Không có dữ liệu</div></div>
                 ) : (() => {
                   const maxRev = Math.max(...dailyRevenue.map(r => Number(r.revenue) || 0), 1)
                   return dailyRevenue.slice(0, 7).map((r, i) => {

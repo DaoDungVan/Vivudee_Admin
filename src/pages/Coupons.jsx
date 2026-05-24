@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getCoupons, createCoupon, updateCoupon, deleteCoupon, toggleCoupon } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { LuTag, LuSearch, LuRefreshCw, LuPencil, LuBan, LuCheck, LuTrash2, LuX, LuTriangleAlert, LuHourglass, LuSave } from 'react-icons/lu'
 
 const DISCOUNT_TYPES = ['percent', 'fixed']
 const DISCOUNT_LABEL = { percent: 'Phần trăm (%)', fixed: 'Cố định (VNĐ)' }
@@ -126,7 +127,7 @@ export default function CouponsPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">🏷️ Quản lý Coupon</div>
+          <div className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}><LuTag size={18}/> Quản lý Coupon</div>
           <div className="page-subtitle">{pagination.total} coupon trong hệ thống</div>
         </div>
         <div className="header-right">
@@ -137,16 +138,16 @@ export default function CouponsPage() {
       <div className="page-content">
         <div className="toolbar">
           <div className="search-box">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><LuSearch size={16}/></span>
             <input placeholder="Tìm mã coupon..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           </div>
-          <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>↺ Làm mới</button>
+          <button className="btn btn-secondary btn-sm ml-auto" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load}><LuRefreshCw size={14}/> Làm mới</button>
         </div>
 
         {loading ? (
           <div className="loading-wrap"><div className="spinner" /></div>
         ) : data.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">🏷️</div><div className="empty-text">Không có coupon nào</div></div>
+          <div className="empty-state"><div className="empty-icon"><LuTag size={36}/></div><div className="empty-text">Không có coupon nào</div></div>
         ) : (
           <>
             <div className="table-wrapper">
@@ -183,21 +184,21 @@ export default function CouponsPage() {
                         {c.expiry_at ? new Date(c.expiry_at).toLocaleDateString('vi-VN') : '—'}
                       </td>
                       <td>
-                        <span className={`badge ${c.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
-                          {c.is_active !== false ? '✓ Hoạt động' : '✕ Vô hiệu'}
+                        <span className={`badge ${c.is_active !== false ? 'badge-success' : 'badge-danger'}`} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                          {c.is_active !== false ? <><LuCheck size={12}/> Hoạt động</> : <><LuX size={12}/> Vô hiệu</>}
                         </span>
                       </td>
                       <td>
                         <div className="action-btns">
-                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}>✏️</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(c)}><LuPencil size={14}/></button>
                           <button
                             className="btn btn-sm"
                             style={{ background: c.is_active !== false ? 'var(--warning-bg)' : 'var(--success-bg)', color: c.is_active !== false ? 'var(--warning)' : 'var(--success)', border: '1px solid currentColor' }}
                             onClick={() => handleToggle(c.id, c.is_active)}
                           >
-                            {c.is_active !== false ? '🚫' : '✓'}
+                            {c.is_active !== false ? <LuBan size={14}/> : <LuCheck size={14}/>}
                           </button>
-                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c.id)}>🗑</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(c.id)}><LuTrash2 size={14}/></button>
                         </div>
                       </td>
                     </tr>
@@ -227,11 +228,11 @@ export default function CouponsPage() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal">
             <div className="modal-header">
-              <div className="modal-title">{modal === 'create' ? '+ Thêm coupon' : '✏️ Cập nhật coupon'}</div>
-              <button className="modal-close" onClick={() => setModal(null)}>✕</button>
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>{modal === 'create' ? '+ Thêm coupon' : <><LuPencil size={15}/> Cập nhật coupon</>}</div>
+              <button className="modal-close" onClick={() => setModal(null)}><LuX size={18}/></button>
             </div>
 
-            {error && <div className="alert alert-error">⚠ {error}</div>}
+            {error && <div className="alert alert-error" style={{ display:'flex', alignItems:'center', gap:6 }}><LuTriangleAlert size={15}/> {error}</div>}
 
             <div className="form-grid">
               <div className="form-group">
@@ -270,7 +271,7 @@ export default function CouponsPage() {
             <div className="form-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Huỷ</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? '⏳ Đang lưu...' : '💾 Lưu'}
+                {saving ? <><LuHourglass size={14}/> Đang lưu...</> : <><LuSave size={14}/> Lưu</>}
               </button>
             </div>
           </div>

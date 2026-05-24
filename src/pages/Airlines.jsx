@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAirlines, createAirline, updateAirline, updateAirlineStatus } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { LuPlaneTakeoff, LuSearch, LuRefreshCw, LuPencil, LuCheck, LuLock, LuX, LuTriangleAlert, LuHourglass, LuSave } from 'react-icons/lu'
 
 const empty = { code: '', name: '', logo_url: '' }
 const SEARCH_FETCH_LIMIT = 500
@@ -98,7 +99,7 @@ export default function AirlinesPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">🛫 Quản lý hãng bay</div>
+          <div className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}><LuPlaneTakeoff size={18}/> Quản lý hãng bay</div>
           <div className="page-subtitle">{total} hãng bay trong hệ thống</div>
         </div>
         <div className="header-right">
@@ -109,16 +110,16 @@ export default function AirlinesPage() {
       <div className="page-content">
         <div className="toolbar">
           <div className="search-box">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><LuSearch size={16}/></span>
             <input placeholder="Tìm hãng bay..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           </div>
-          <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>↺ Làm mới</button>
+          <button className="btn btn-secondary btn-sm ml-auto" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load}><LuRefreshCw size={14}/> Làm mới</button>
         </div>
 
         {loading ? (
           <div className="loading-wrap"><div className="spinner" /></div>
         ) : data.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">🛫</div><div className="empty-text">Không tìm thấy hãng bay</div></div>
+          <div className="empty-state"><div className="empty-icon"><LuPlaneTakeoff size={36}/></div><div className="empty-text">Không tìm thấy hãng bay</div></div>
         ) : (
           <>
             <div className="table-wrapper">
@@ -138,12 +139,12 @@ export default function AirlinesPage() {
                       <td><span className="td-mono">{a.code}</span></td>
                       <td style={{ fontWeight: 500 }}>{a.name}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.created_at ? new Date(a.created_at).toLocaleDateString('vi-VN') : '—'}</td>
-                      <td><span className={`badge ${a.is_active ? 'badge-success' : 'badge-danger'}`}>{a.is_active ? '✓ Hoạt động' : '✕ Dừng'}</span></td>
+                      <td><span className={`badge ${a.is_active ? 'badge-success' : 'badge-danger'}`} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>{a.is_active ? <><LuCheck size={12}/> Hoạt động</> : <><LuX size={12}/> Dừng</>}</span></td>
                       <td>
                         <div className="action-btns">
-                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(a)}>✏️ Sửa</button>
-                          <button className={`btn btn-sm ${a.is_active ? 'btn-danger' : 'btn-success'}`} onClick={() => toggleStatus(a)}>
-                            {a.is_active ? '🔒 Dừng' : '✓ Kích hoạt'}
+                          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => openEdit(a)}><LuPencil size={13}/> Sửa</button>
+                          <button className={`btn btn-sm ${a.is_active ? 'btn-danger' : 'btn-success'}`} style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => toggleStatus(a)}>
+                            {a.is_active ? <><LuLock size={13}/> Dừng</> : <><LuCheck size={13}/> Kích hoạt</>}
                           </button>
                         </div>
                       </td>
@@ -170,10 +171,10 @@ export default function AirlinesPage() {
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget&&setModal(null)}>
           <div className="modal">
             <div className="modal-header">
-              <div className="modal-title">{modal==='create'?'+ Thêm hãng bay':'✏️ Cập nhật hãng bay'}</div>
-              <button className="modal-close" onClick={() => setModal(null)}>✕</button>
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>{modal==='create'?'+ Thêm hãng bay':<><LuPencil size={15}/> Cập nhật hãng bay</>}</div>
+              <button className="modal-close" onClick={() => setModal(null)}><LuX size={18}/></button>
             </div>
-            {error && <div className="alert alert-error">⚠ {error}</div>}
+            {error && <div className="alert alert-error" style={{ display:'flex', alignItems:'center', gap:6 }}><LuTriangleAlert size={15}/> {error}</div>}
             <div className="form-grid">
               <div className="form-group"><label className="form-label">Mã hãng *</label><input className="form-control" value={form.code} onChange={e=>sf('code',e.target.value.toUpperCase())} placeholder="VN" maxLength={10} /></div>
               <div className="form-group"><label className="form-label">Tên hãng bay *</label><input className="form-control" value={form.name} onChange={e=>sf('name',e.target.value)} placeholder="Vietnam Airlines" /></div>
@@ -182,7 +183,7 @@ export default function AirlinesPage() {
             </div>
             <div className="form-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Huỷ</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving?'⏳ Đang lưu...':'💾 Lưu'}</button>
+              <button className="btn btn-primary" style={{ display:'flex', alignItems:'center', gap:6 }} onClick={handleSave} disabled={saving}>{saving?<><LuHourglass size={14}/> Đang lưu...</>:<><LuSave size={14}/> Lưu</>}</button>
             </div>
           </div>
         </div>

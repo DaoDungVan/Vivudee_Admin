@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getUsers, getUserById, updateUserStatus, updateUserRole } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { LuUsers, LuSearch, LuRefreshCw, LuEye, LuX, LuUser, LuChevronRight } from 'react-icons/lu'
 
 const SEARCH_FETCH_LIMIT = 500
 
@@ -14,8 +15,8 @@ const ROLES    = ['customer', 'staff', 'admin']
 const STATUSES = ['active', 'inactive', 'blocked']
 const ROLE_BADGE   = { admin: 'badge-danger', staff: 'badge-warning', customer: 'badge-info' }
 const STATUS_BADGE = { active: 'badge-success', inactive: 'badge-muted', blocked: 'badge-danger' }
-const ROLE_LABEL   = { admin: '🔴 Admin', staff: '🟡 Staff', customer: '🔵 Customer' }
-const STATUS_LABEL = { active: '✓ Hoạt động', inactive: '— Không HĐ', blocked: '🔒 Bị khoá' }
+const ROLE_LABEL   = { admin: 'Quản trị viên', staff: 'Nhân viên', customer: 'Khách hàng' }
+const STATUS_LABEL = { active: 'Hoạt động', inactive: 'Không hoạt động', blocked: 'Bị khoá' }
 
 export default function UsersPage() {
   const [data, setData]             = useState([])
@@ -102,7 +103,7 @@ export default function UsersPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">👥 Quản lý người dùng</div>
+          <div className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}><LuUsers size={18}/> Quản lý người dùng</div>
           <div className="page-subtitle">{total} tài khoản trong hệ thống</div>
         </div>
       </div>
@@ -110,24 +111,24 @@ export default function UsersPage() {
       <div className="page-content">
         <div className="toolbar">
           <div className="search-box">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><LuSearch size={16}/></span>
             <input placeholder="Tìm tên, email, SĐT..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           </div>
           <select className="filter-select" value={filterRole} onChange={e => { setFilterRole(e.target.value); setPage(1) }}>
-            <option value="">Tất cả role</option>
+            <option value="">Tất cả vai trò</option>
             {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
           </select>
           <select className="filter-select" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }}>
             <option value="">Tất cả trạng thái</option>
             {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
           </select>
-          <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>↺ Làm mới</button>
+          <button className="btn btn-secondary btn-sm ml-auto" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load}><LuRefreshCw size={14}/> Làm mới</button>
         </div>
 
         {loading ? (
           <div className="loading-wrap"><div className="spinner" /></div>
         ) : data.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">👥</div><div className="empty-text">Không tìm thấy người dùng</div></div>
+          <div className="empty-state"><div className="empty-icon"><LuUsers size={36}/></div><div className="empty-text">Không tìm thấy người dùng</div></div>
         ) : (
           <>
             <div className="table-wrapper">
@@ -135,7 +136,7 @@ export default function UsersPage() {
                 <thead>
                   <tr>
                     <th>ID</th><th>Họ tên</th><th>Email</th><th>SĐT</th>
-                    <th>Role</th><th>Trạng thái</th><th>Email XV</th><th>Ngày tạo</th><th>Thao tác</th>
+                    <th>Vai trò</th><th>Trạng thái</th><th>Email xác thực</th><th>Ngày tạo</th><th>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -147,12 +148,12 @@ export default function UsersPage() {
                       <td style={{ fontSize: 12 }}>{u.phone || '—'}</td>
                       <td>
                         <select className="filter-select" style={{ padding: '4px 8px', fontSize: 12 }} value={u.role} onChange={e => handleRole(u.id, e.target.value)}>
-                          {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                          {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r] || r}</option>)}
                         </select>
                       </td>
                       <td>
                         <select className="filter-select" style={{ padding: '4px 8px', fontSize: 12 }} value={u.status} onChange={e => handleStatus(u.id, e.target.value)}>
-                          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                          {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
                         </select>
                       </td>
                       <td>
@@ -164,7 +165,7 @@ export default function UsersPage() {
                         {u.created_at ? new Date(u.created_at).toLocaleDateString('vi-VN') : '—'}
                       </td>
                       <td>
-                        <button className="btn btn-secondary btn-sm" onClick={() => openDetail(u)}>👁 Chi tiết</button>
+                        <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => openDetail(u)}><LuEye size={13}/> Chi tiết</button>
                       </td>
                     </tr>
                   ))}
@@ -189,8 +190,8 @@ export default function UsersPage() {
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget&&setDetail(null)}>
           <div className="modal" style={{ maxWidth: 520 }}>
             <div className="modal-header">
-              <div className="modal-title">👤 Chi tiết người dùng #{detail.id}</div>
-              <button className="modal-close" onClick={() => setDetail(null)}>✕</button>
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}><LuUser size={16}/> Chi tiết người dùng #{detail.id}</div>
+              <button className="modal-close" onClick={() => setDetail(null)}><LuX size={18}/></button>
             </div>
             {detailLoading ? <div className="loading-wrap"><div className="spinner" /></div> : (
               <>
@@ -220,10 +221,10 @@ export default function UsersPage() {
                 ))}
                 <div style={{ marginTop: 20, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {STATUSES.filter(s => s !== detail.status).map(s => (
-                    <button key={s} className={`btn btn-sm ${s==='blocked'?'btn-danger':s==='active'?'btn-success':'btn-secondary'}`} onClick={() => handleStatus(detail.id, s)}>→ {s}</button>
+                    <button key={s} className={`btn btn-sm ${s==='blocked'?'btn-danger':s==='active'?'btn-success':'btn-secondary'}`} style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => handleStatus(detail.id, s)}><LuChevronRight size={13}/> {STATUS_LABEL[s] || s}</button>
                   ))}
                   {ROLES.filter(r => r !== detail.role).map(r => (
-                    <button key={r} className="btn btn-secondary btn-sm" onClick={() => handleRole(detail.id, r)}>Role → {r}</button>
+                    <button key={r} className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => handleRole(detail.id, r)}>Vai trò <LuChevronRight size={13}/> {ROLE_LABEL[r] || r}</button>
                   ))}
                 </div>
               </>

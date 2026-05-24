@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { runLoyaltyRecalc, runExpiredBookings, runCronJob } from '../api'
+import { LuSettings, LuAward, LuTimerOff, LuPlay, LuTriangleAlert } from 'react-icons/lu'
 
 export default function SystemPage() {
   const [cronLoading, setCronLoading] = useState('')
@@ -23,7 +24,7 @@ export default function SystemPage() {
 
   const tools = [
     {
-      icon: '🏅',
+      icon: <LuAward size={26}/>,
       title: 'Đồng bộ hạng thành viên',
       badge: 'An toàn — chạy bất kỳ lúc nào',
       badgeColor: '#16a34a',
@@ -33,7 +34,7 @@ export default function SystemPage() {
       fn: runLoyaltyRecalc,
     },
     {
-      icon: '⌛',
+      icon: <LuTimerOff size={26}/>,
       title: 'Hủy booking quá hạn thanh toán',
       badge: 'An toàn — chạy bất kỳ lúc nào',
       badgeColor: '#16a34a',
@@ -43,7 +44,7 @@ export default function SystemPage() {
       fn: runExpiredBookings,
     },
     {
-      icon: '▶',
+      icon: <LuPlay size={26}/>,
       title: 'Chạy cả 2 tác vụ trên cùng lúc',
       badge: 'An toàn — chạy bất kỳ lúc nào',
       badgeColor: '#16a34a',
@@ -53,7 +54,7 @@ export default function SystemPage() {
       fn: () => runCronJob('all'),
     },
     {
-      icon: '⚠️',
+      icon: <LuTriangleAlert size={26}/>,
       title: 'Reset điểm hạng hàng năm (1/1)',
       badge: 'Cẩn thận — chỉ dùng khi thật sự cần',
       badgeColor: '#d97706',
@@ -68,7 +69,7 @@ export default function SystemPage() {
     <div className="page-content">
       <div className="page-header">
         <div>
-          <div className="page-title">⚙️ Công cụ hệ thống</div>
+          <div className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}><LuSettings size={18}/> Công cụ hệ thống</div>
           <div className="page-subtitle">Quản lý các tác vụ nền và tính toán lại dữ liệu hệ thống</div>
         </div>
       </div>

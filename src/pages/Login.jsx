@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { login } from '../api'
 import { useAuth } from '../context/AuthContext'
 import LogoNav from '../assets/imgs/LogoNav.svg'
+import { LuTriangleAlert, LuHourglass, LuLock } from 'react-icons/lu'
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -40,7 +41,11 @@ export default function LoginPage() {
           <div className="login-subtitle">Hệ thống quản lý đặt vé máy bay</div>
         </div>
 
-        {error && <div className="alert alert-error">⚠ {error}</div>}
+        {error && (
+          <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <LuTriangleAlert size={16}/> {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group" style={{ marginBottom: '16px' }}>
@@ -65,8 +70,8 @@ export default function LoginPage() {
               required
             />
           </div>
-          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} type="submit" disabled={loading}>
-            {loading ? '⏳ Đang đăng nhập...' : '🔐 Đăng nhập'}
+          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px', display: 'flex', alignItems: 'center', gap: 8 }} type="submit" disabled={loading}>
+            {loading ? <><LuHourglass size={16}/> Đang đăng nhập...</> : <><LuLock size={16}/> Đăng nhập</>}
           </button>
         </form>
 

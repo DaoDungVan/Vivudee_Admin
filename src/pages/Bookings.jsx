@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getBookings, getBookingById, updateBookingStatus } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { LuTicket, LuSearch, LuRefreshCw, LuEye, LuX, LuUser, LuChevronRight } from 'react-icons/lu'
 
 const SEARCH_FETCH_LIMIT = 500
 
@@ -22,7 +23,7 @@ const matchesBookingSearch = (booking, keyword) => {
 
 const BOOKING_STATUSES = ['pending', 'confirmed', 'cancelled', 'expired']
 const STATUS_BADGE = { pending: 'badge-warning', confirmed: 'badge-success', cancelled: 'badge-danger', expired: 'badge-muted', refunded: 'badge-muted' }
-const STATUS_LABEL = { pending: '⏳ Chờ xác nhận', confirmed: '✓ Đã xác nhận', cancelled: '✕ Đã huỷ', expired: '⌛ Hết hạn', refunded: '↩ Hoàn tiền' }
+const STATUS_LABEL = { pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', cancelled: 'Đã huỷ', expired: 'Hết hạn', refunded: 'Hoàn tiền' }
 
 const fmtCurrency = (n) => {
   if (n == null || n === '') return '—'
@@ -107,15 +108,15 @@ export default function BookingsPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">🎫 Quản lý đặt vé</div>
-          <div className="page-subtitle">{total} booking trong hệ thống</div>
+          <div className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}><LuTicket size={18}/> Quản lý đặt vé</div>
+          <div className="page-subtitle">{total} lượt đặt vé trong hệ thống</div>
         </div>
       </div>
 
       <div className="page-content">
         <div className="toolbar">
           <div className="search-box">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><LuSearch size={16}/></span>
             <input placeholder="Tìm mã booking, email, tên..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           </div>
           <div className="tabs" style={{ margin: 0 }}>
@@ -124,13 +125,13 @@ export default function BookingsPage() {
               <div key={s} className={`tab${filterStatus===s?' active':''}`} onClick={() => { setFilterStatus(s); setPage(1) }}>{STATUS_LABEL[s]}</div>
             ))}
           </div>
-          <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>↺ Làm mới</button>
+          <button className="btn btn-secondary btn-sm ml-auto" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load}><LuRefreshCw size={14}/> Làm mới</button>
         </div>
 
         {loading ? (
           <div className="loading-wrap"><div className="spinner" /></div>
         ) : data.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">🎫</div><div className="empty-text">Không tìm thấy booking</div></div>
+          <div className="empty-state"><div className="empty-icon"><LuTicket size={36}/></div><div className="empty-text">Không tìm thấy đặt vé</div></div>
         ) : (
           <>
             <div className="table-wrapper">
@@ -177,7 +178,7 @@ export default function BookingsPage() {
                           {b.created_at ? new Date(b.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
                         </td>
                         <td>
-                          <button className="btn btn-secondary btn-sm" onClick={() => openDetail(b)}>👁 Chi tiết</button>
+                          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={() => openDetail(b)}><LuEye size={13}/> Chi tiết</button>
                         </td>
                       </tr>
                     )
@@ -186,7 +187,7 @@ export default function BookingsPage() {
               </table>
             </div>
             <div className="pagination">
-              <div className="pagination-info">Trang {page} / {total_pages} · Tổng {total} booking</div>
+              <div className="pagination-info">Trang {page} / {total_pages} · Tổng {total} lượt đặt vé</div>
               <div className="pagination-btns">
                 <button className="page-btn" disabled={page===1} onClick={() => setPage(1)}>«</button>
                 <button className="page-btn" disabled={page===1} onClick={() => setPage(p=>p-1)}>‹</button>
@@ -203,8 +204,8 @@ export default function BookingsPage() {
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget&&setDetail(null)}>
           <div className="modal" style={{ maxWidth: 620 }}>
             <div className="modal-header">
-              <div className="modal-title">🎫 Chi tiết: {detail.booking_code || `#${detail.id}`}</div>
-              <button className="modal-close" onClick={() => setDetail(null)}>✕</button>
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}><LuTicket size={16}/> Chi tiết: {detail.booking_code || `#${detail.id}`}</div>
+              <button className="modal-close" onClick={() => setDetail(null)}><LuX size={18}/></button>
             </div>
             {detailLoading ? <div className="loading-wrap"><div className="spinner" /></div> : (
               <>
@@ -212,7 +213,8 @@ export default function BookingsPage() {
                 <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
                   {['confirmed','cancelled','expired'].filter(s => s !== detail.status).map(s => (
                     <button key={s} className={`btn btn-sm ${s==='cancelled'?'btn-danger':s==='confirmed'?'btn-success':'btn-secondary'}`}
-                      onClick={() => handleStatus(detail.id, s)}>→ {STATUS_LABEL[s]}</button>
+                      style={{ display:'flex', alignItems:'center', gap:4 }}
+                      onClick={() => handleStatus(detail.id, s)}><LuChevronRight size={14}/> {STATUS_LABEL[s]}</button>
                   ))}
                 </div>
 
@@ -243,7 +245,7 @@ export default function BookingsPage() {
 
                 {detail.passengers?.length > 0 && (
                   <div style={{ marginTop: 20 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 14 }}>👤 Hành khách</div>
+                    <div style={{ fontWeight: 600, marginBottom: 12, fontSize: 14, display:'flex', alignItems:'center', gap:6 }}><LuUser size={14}/> Hành khách</div>
                     <div className="table-wrapper">
                       <table>
                         <thead><tr><th>Họ tên</th><th>Loại</th><th>Chuyến</th><th>Số ghế</th></tr></thead>

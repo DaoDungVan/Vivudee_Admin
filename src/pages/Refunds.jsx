@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAdminRefunds, approveRefund, completeRefund, rejectRefund } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { LuCheck, LuX, LuRefreshCw, LuChevronLeft, LuChevronRight, LuBanknote } from 'react-icons/lu'
 
 const STATUS_BADGE = {
   pending:   'badge-warning',
@@ -10,11 +11,11 @@ const STATUS_BADGE = {
   cancelled: 'badge-muted',
 }
 const STATUS_LABEL = {
-  pending:   '⏳ Chờ xử lý',
-  approved:  '✓ Đã duyệt – chờ chấp nhận',
-  rejected:  '✕ Từ chối',
-  completed: '💸 Hoàn tiền xong',
-  cancelled: '— Đã huỷ',
+  pending:   'Chờ xử lý',
+  approved:  'Đã duyệt – chờ chấp nhận',
+  rejected:  'Từ chối',
+  completed: 'Hoàn tiền xong',
+  cancelled: 'Đã huỷ',
 }
 
 const fmtCurrency = (n) =>
@@ -123,7 +124,7 @@ export default function RefundsPage() {
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: 16 }}>
           {error}
-          <button onClick={() => setError('')} style={{ marginLeft: 12, background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+          <button onClick={() => setError('')} style={{ marginLeft: 12, background: 'none', border: 'none', cursor: 'pointer', display:'inline-flex', alignItems:'center' }}><LuX size={15}/></button>
         </div>
       )}
 
@@ -149,8 +150,8 @@ export default function RefundsPage() {
           <option value="completed">Hoàn tiền xong</option>
           <option value="cancelled">Đã huỷ</option>
         </select>
-        <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
-          {loading ? '...' : '↻ Tải lại'}
+        <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load} disabled={loading}>
+          {loading ? '...' : <><LuRefreshCw size={14}/> Tải lại</>}
         </button>
       </div>
 
@@ -202,14 +203,14 @@ export default function RefundsPage() {
                         disabled={!!actionLoading}
                         onClick={() => handleApprove(r.refund_code || r.id)}
                       >
-                        {actionLoading === (r.refund_code || r.id) + '_approve' ? '...' : '✓ Duyệt'}
+                        {actionLoading === (r.refund_code || r.id) + '_approve' ? '...' : <><LuCheck size={13}/> Duyệt</>}
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
                         disabled={!!actionLoading}
                         onClick={() => { setRejectModal(r.refund_code || r.id); setRejectReason(''); setError('') }}
                       >
-                        ✕ Từ chối
+                        <LuX size={13}/> Từ chối
                       </button>
                     </div>
                   ) : r.status?.toLowerCase() === 'approved' ? (
@@ -218,7 +219,7 @@ export default function RefundsPage() {
                       disabled={!!actionLoading}
                       onClick={() => handleComplete(r.refund_code || r.id)}
                     >
-                      {actionLoading === (r.refund_code || r.id) + '_complete' ? '...' : '💸 Chấp nhận hoàn tiền'}
+                      {actionLoading === (r.refund_code || r.id) + '_complete' ? '...' : <><LuBanknote size={13}/> Chấp nhận hoàn tiền</>}
                     </button>
                   ) : (
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>—</span>
@@ -233,9 +234,9 @@ export default function RefundsPage() {
       {/* Pagination */}
       {pagination.total_pages > 1 && (
         <div className="pagination">
-          <button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Trước</button>
+          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}><LuChevronLeft size={14}/> Trước</button>
           <span style={{ padding: '0 12px', fontSize: 13 }}>Trang {page} / {pagination.total_pages}</span>
-          <button className="btn btn-secondary btn-sm" disabled={page >= pagination.total_pages} onClick={() => setPage(p => p + 1)}>Sau →</button>
+          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} disabled={page >= pagination.total_pages} onClick={() => setPage(p => p + 1)}>Sau <LuChevronRight size={14}/></button>
         </div>
       )}
 

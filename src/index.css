@@ -115,7 +115,7 @@ body.sidebar-open {
 
 .nav-item {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 10px;
   padding: 9px 12px;
   border-radius: var(--radius);

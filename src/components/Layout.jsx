@@ -2,18 +2,22 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import LogoNav from '../assets/imgs/LogoNav.svg'
+import {
+  LuLayoutDashboard, LuPlane, LuBuilding2, LuPlaneTakeoff, LuUsers,
+  LuTicket, LuTag, LuMessageSquare, LuUndo2, LuSettings, LuX, LuMenu, LuLogOut,
+} from 'react-icons/lu'
 
 const navItems = [
-  { to: '/', icon: '📊', label: 'Dashboard' },
-  { to: '/flights', icon: '✈️', label: 'Chuyến Bay' },
-  { to: '/airports', icon: '🏢', label: 'Sân Bay' },
-  { to: '/airlines', icon: '🛫', label: 'Hãng Bay' },
-  { to: '/users', icon: '👥', label: 'Người Dùng' },
-  { to: '/bookings', icon: '🎫', label: 'Đặt Vé' },
-  { to: '/coupons', icon: '🏷️', label: 'Coupon' },
-  { to: '/chat', icon: '💬', label: 'Hỗ Trợ Chat' },
-  { to: '/refunds', icon: '↩️', label: 'Hoàn Tiền' },
-  { to: '/system',  icon: '⚙️', label: 'Hệ Thống' },
+  { to: '/',         icon: <LuLayoutDashboard size={18}/>, label: 'Bảng điều khiển' },
+  { to: '/flights',  icon: <LuPlane size={18}/>,           label: 'Chuyến Bay' },
+  { to: '/airports', icon: <LuBuilding2 size={18}/>,       label: 'Sân Bay' },
+  { to: '/airlines', icon: <LuPlaneTakeoff size={18}/>,    label: 'Hãng Bay' },
+  { to: '/users',    icon: <LuUsers size={18}/>,           label: 'Người Dùng' },
+  { to: '/bookings', icon: <LuTicket size={18}/>,          label: 'Đặt Vé' },
+  { to: '/coupons',  icon: <LuTag size={18}/>,             label: 'Coupon' },
+  { to: '/chat',     icon: <LuMessageSquare size={18}/>,   label: 'Hỗ Trợ Chat' },
+  { to: '/refunds',  icon: <LuUndo2 size={18}/>,           label: 'Hoàn Tiền' },
+  { to: '/system',   icon: <LuSettings size={18}/>,        label: 'Hệ Thống' },
 ]
 
 export default function Layout() {
@@ -47,14 +51,14 @@ export default function Layout() {
       <button
         type="button"
         className="mobile-nav-toggle"
-        aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-label={mobileNavOpen ? 'Đóng menu điều hướng' : 'Mở menu điều hướng'}
         aria-expanded={mobileNavOpen}
         onClick={() => setMobileNavOpen(open => !open)}
       >
-        {mobileNavOpen ? '✕' : '☰'}
+        {mobileNavOpen ? <LuX size={20}/> : <LuMenu size={20}/>}
       </button>
 
-      {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Close menu overlay" onClick={() => setMobileNavOpen(false)} />}
+      {mobileNavOpen && <button type="button" className="sidebar-backdrop" aria-label="Đóng lớp phủ menu" onClick={() => setMobileNavOpen(false)} />}
 
       <aside className={`sidebar${mobileNavOpen ? ' open' : ''}`}>
         <div className="sidebar-logo">
@@ -62,7 +66,7 @@ export default function Layout() {
         </div>
 
         <div className="sidebar-section">
-          <div className="sidebar-label">Navigation</div>
+          <div className="sidebar-label">Điều hướng</div>
           {navItems.map(item => (
             <NavLink
               key={item.to}
@@ -81,8 +85,8 @@ export default function Layout() {
           <div style={{ marginBottom: '10px', color: 'var(--text-secondary)', fontSize: '12px' }}>
             {user?.full_name || user?.email || 'Admin'}
           </div>
-          <button className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center' }} onClick={handleLogout}>
-            🚪 Đăng xuất
+          <button className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: 6 }} onClick={handleLogout}>
+            <LuLogOut size={15}/> Đăng xuất
           </button>
         </div>
       </aside>

@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getFlights, createFlight, updateFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert } from 'react-icons/lu'
 
 const SEARCH_FETCH_LIMIT = 500
 const SORT_OPTIONS = [
-  { value: '', label: 'Sap xep khoi hanh' },
-  { value: 'desc', label: 'Chuyen moi nhat' },
-  { value: 'asc', label: 'Chuyen cu nhat' },
+  { value: '', label: 'Sắp xếp khởi hành' },
+  { value: 'desc', label: 'Chuyến mới nhất' },
+  { value: 'asc', label: 'Chuyến cũ nhất' },
 ]
 const fmtPrice = (n) => n ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n)) : '—'
 
@@ -122,10 +123,10 @@ const sortFlightsByDepartureTime = (items, sortDirection) => {
 }
 
 const STATUS_LABELS = {
-  scheduled: { label: 'Da len lich', cls: 'badge-info' },
-  delayed: { label: 'Tre gio', cls: 'badge-warning' },
-  cancelled: { label: 'Da huy', cls: 'badge-danger' },
-  completed: { label: 'Hoan thanh', cls: 'badge-success' },
+  scheduled: { label: 'Đã lên lịch', cls: 'badge-info' },
+  delayed: { label: 'Trễ giờ', cls: 'badge-warning' },
+  cancelled: { label: 'Đã huỷ', cls: 'badge-danger' },
+  completed: { label: 'Hoàn thành', cls: 'badge-success' },
 }
 const FLIGHT_STATUSES = ['scheduled', 'delayed', 'cancelled', 'completed']
 
@@ -317,9 +318,9 @@ export default function FlightsPage() {
     } catch (e) {
       const backendError = e.response?.data?.error || ''
       if (backendError.includes('flights_pkey')) {
-        setError('Backend dang bi trung ID tu dong cua bang flights, khong phai trung so hieu bay.')
+        setError('Backend đang bị trùng ID tự động của bảng flights, không phải trùng số hiệu bay.')
       } else {
-        setError(backendError || 'Loi khi luu')
+        setError(backendError || 'Lỗi khi lưu')
       }
     } finally {
       saveLockRef.current = false
@@ -332,7 +333,7 @@ export default function FlightsPage() {
       await updateFlightStatus(id, statusValue)
       load()
     } catch (e) {
-      alert(e.response?.data?.error || 'Loi')
+      alert(e.response?.data?.error || 'Lỗi')
     }
   }
 
@@ -341,7 +342,7 @@ export default function FlightsPage() {
       await toggleFlightVisibility(id)
       load()
     } catch (e) {
-      alert(e.response?.data?.error || 'Loi')
+      alert(e.response?.data?.error || 'Lỗi')
     }
   }
 
@@ -385,26 +386,26 @@ export default function FlightsPage() {
     <>
       <div className="page-header">
         <div>
-          <div className="page-title">✈️ Quan ly chuyen bay</div>
-          <div className="page-subtitle">{total} chuyen bay trong he thong</div>
+          <div className="page-title" style={{ display:'flex', alignItems:'center', gap:8 }}><LuPlane size={18}/> Quản lý chuyến bay</div>
+          <div className="page-subtitle">{total} chuyến bay trong hệ thống</div>
         </div>
         <div className="header-right">
-          <button className="btn btn-primary" onClick={openCreate}>+ Them chuyen bay</button>
+          <button className="btn btn-primary" onClick={openCreate}>+ Thêm chuyến bay</button>
         </div>
       </div>
 
       <div className="page-content">
         <div className="toolbar">
           <div className="search-box">
-            <span className="search-icon">🔍</span>
+            <span className="search-icon"><LuSearch size={16}/></span>
             <input
-              placeholder="Tim so hieu bay..."
+              placeholder="Tìm số hiệu bay..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             />
           </div>
           <select className="filter-select" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1) }}>
-            <option value="">Tat ca trang thai</option>
+            <option value="">Tất cả trạng thái</option>
             {FLIGHT_STATUSES.map((statusValue) => (
               <option key={statusValue} value={statusValue}>{STATUS_LABELS[statusValue]?.label}</option>
             ))}
@@ -419,39 +420,39 @@ export default function FlightsPage() {
             type="date"
             value={departureDateFilter}
             onChange={(e) => { setDepartureDateFilter(e.target.value); setPage(1) }}
-            title="Ngay khoi hanh"
+            title="Ngày khởi hành"
           />
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <input type="checkbox" checked={showHidden} onChange={(e) => { setShowHidden(e.target.checked); setPage(1) }} />
-            Hien ca ve an
+            Hiện cả vé ẩn
           </label>
           <select className="filter-select" value={limit} style={{ width: 80 }} onChange={() => {}}>
             <option value={15}>15/trang</option>
           </select>
-          <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Xoa loc</button>
-          <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>Lam moi</button>
+          <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Xoá lọc</button>
+          <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>Làm mới</button>
         </div>
 
         {loading ? (
           <div className="loading-wrap"><div className="spinner" /></div>
         ) : flights.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon">✈️</div><div className="empty-text">Khong tim thay chuyen bay</div></div>
+          <div className="empty-state"><div className="empty-icon"><LuPlane size={36}/></div><div className="empty-text">Không tìm thấy chuyến bay</div></div>
         ) : (
           <>
             <div className="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>So hieu</th>
-                    <th>Hang</th>
-                    <th>Tuyen duong</th>
-                    <th>Khoi hanh</th>
-                    <th>Den noi</th>
-                    <th>Thoi gian</th>
-                    <th>Gia (Economy / Business / First)</th>
-                    <th>Trang thai</th>
-                    <th>Hien thi</th>
-                    <th>Hanh dong</th>
+                    <th>Số hiệu</th>
+                    <th>Hãng</th>
+                    <th>Tuyến đường</th>
+                    <th>Khởi hành</th>
+                    <th>Đến nơi</th>
+                    <th>Thời gian</th>
+                    <th>Giá (Economy / Business / First)</th>
+                    <th>Trạng thái</th>
+                    <th>Hiển thị</th>
+                    <th>Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -492,12 +493,12 @@ export default function FlightsPage() {
                       </td>
                       <td>
                         <span className={`badge ${flight.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
-                          {flight.is_active !== false ? '👁 Hien' : '🚫 An'}
+                          {flight.is_active !== false ? <><LuEye size={13}/> Hien</> : <><LuBan size={13}/> An</>}
                         </span>
                       </td>
                       <td>
                         <div className="action-btns">
-                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(flight)}>✏️</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(flight)}><LuPencil size={14}/></button>
                           <button
                             className="btn btn-sm"
                             style={{
@@ -507,7 +508,7 @@ export default function FlightsPage() {
                             }}
                             onClick={() => handleVisibility(flight.id)}
                           >
-                            {flight.is_active !== false ? '🚫' : '👁'}
+                            {flight.is_active !== false ? <LuBan size={14}/> : <LuEye size={14}/>}
                           </button>
                         </div>
                       </td>
@@ -519,7 +520,7 @@ export default function FlightsPage() {
 
             <div className="pagination">
               <div className="pagination-info">
-                Trang {page} / {total_pages} · Tong {total} chuyen bay
+                Trang {page} / {total_pages} · Tổng {total} chuyến bay
               </div>
               <div className="pagination-btns">
                 <button className="page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
@@ -539,76 +540,76 @@ export default function FlightsPage() {
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setModal(null)}>
           <div className="modal">
             <div className="modal-header">
-              <div className="modal-title">{modal === 'create' ? '+ Them chuyen bay' : '✏️ Cap nhat chuyen bay'}</div>
-              <button className="modal-close" onClick={() => setModal(null)}>✕</button>
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>{modal === 'create' ? '+ Thêm chuyến bay' : <><LuPencil size={15}/> Cập nhật chuyến bay</>}</div>
+              <button className="modal-close" onClick={() => setModal(null)}><LuX size={18}/></button>
             </div>
-            {error && <div className="alert alert-error">⚠ {error}</div>}
+            {error && <div className="alert alert-error" style={{ display:'flex', alignItems:'center', gap:6 }}><LuTriangleAlert size={15}/> {error}</div>}
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label">So hieu bay *</label>
+                <label className="form-label">Số hiệu bay *</label>
                 <input className="form-control" value={form.flight_number} onChange={(e) => setField('flight_number', e.target.value)} placeholder="VN123" />
               </div>
               <div className="form-group">
-                <label className="form-label">Hang bay *</label>
+                <label className="form-label">Hãng bay *</label>
                 <select className="form-control" value={form.airline_id} onChange={(e) => setField('airline_id', e.target.value)}>
-                  <option value="">-- Chon hang --</option>
+                  <option value="">-- Chọn hãng --</option>
                   {airlines.map((airline) => <option key={airline.id} value={airline.id}>{airline.name} ({airline.code})</option>)}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">San bay di *</label>
+                <label className="form-label">Sân bay đi *</label>
                 <select className="form-control" value={form.departure_airport_id} onChange={(e) => setField('departure_airport_id', e.target.value)}>
-                  <option value="">-- Chon san bay --</option>
+                  <option value="">-- Chọn sân bay --</option>
                   {airports.map((airport) => <option key={airport.id} value={airport.id}>{airport.name} ({airport.code})</option>)}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">San bay den *</label>
+                <label className="form-label">Sân bay đến *</label>
                 <select className="form-control" value={form.arrival_airport_id} onChange={(e) => setField('arrival_airport_id', e.target.value)}>
-                  <option value="">-- Chon san bay --</option>
+                  <option value="">-- Chọn sân bay --</option>
                   {airports.map((airport) => <option key={airport.id} value={airport.id}>{airport.name} ({airport.code})</option>)}
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Gio khoi hanh *</label>
+                <label className="form-label">Giờ khởi hành *</label>
                 <input className="form-control" type="datetime-local" value={form.departure_time} onChange={(e) => setField('departure_time', e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">Gio den *</label>
+                <label className="form-label">Giờ đến *</label>
                 <input className="form-control" type="datetime-local" value={form.arrival_time} onChange={(e) => setField('arrival_time', e.target.value)} />
               </div>
               <div className="form-group full">
-                <label className="form-label">Thoi gian bay (phut) *</label>
+                <label className="form-label">Thời gian bay (phút) *</label>
                 <input className="form-control" type="number" value={form.duration_minutes} onChange={(e) => setField('duration_minutes', e.target.value)} placeholder="90" />
               </div>
               <div className="form-group full">
                 <div style={{ marginBottom: 10 }}>
-                  <label className="form-label">3 hang ghe co dinh va gia hanh ly theo goi</label>
+                  <label className="form-label">3 hạng ghế cố định và giá hành lý theo gói</label>
                 </div>
                 {form.seats.map((seat, index) => (
                   <div className="seat-row" key={seat.class}>
                     <div className="seat-row-header">
-                      <span>{SEAT_CLASS_LABELS[seat.class] || `Hang ghe ${index + 1}`}</span>
+                      <span>{SEAT_CLASS_LABELS[seat.class] || `Hạng ghế ${index + 1}`}</span>
                     </div>
                     <div className="form-grid">
                       <div className="form-group">
-                        <label className="form-label">So ghe</label>
+                        <label className="form-label">Số ghế</label>
                         <input className="form-control" type="number" value={seat.total_seats} onChange={(e) => setSeatField(index, 'total_seats', e.target.value)} placeholder={SEAT_MAX[seat.class]} min="1" max={SEAT_MAX[seat.class]} />
                       </div>
                       <div className="form-group full">
-                        <label className="form-label">Gia co ban (VND)</label>
+                        <label className="form-label">Giá cơ bản (VND)</label>
                         <input className="form-control" type="number" value={seat.base_price} onChange={(e) => setSeatField(index, 'base_price', e.target.value)} placeholder="1500000" />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Ky gui mien phi (kg)</label>
+                        <label className="form-label">Ký gửi miễn phí (kg)</label>
                         <input className="form-control" type="number" value={seat.baggage_included_kg} onChange={(e) => setSeatField(index, 'baggage_included_kg', e.target.value)} placeholder="23" />
                       </div>
                       <div className="form-group">
-                        <label className="form-label">Xach tay (kg)</label>
+                        <label className="form-label">Xách tay (kg)</label>
                         <input className="form-control" type="number" value={seat.carry_on_kg} onChange={(e) => setSeatField(index, 'carry_on_kg', e.target.value)} placeholder="7" />
                       </div>
                       <div className="form-group full">
-                        <label className="form-label">Gia hanh ly mua them theo goi</label>
+                        <label className="form-label">Giá hành lý mua thêm theo gói</label>
                         <div
                           style={{
                             display: 'grid',
@@ -618,7 +619,7 @@ export default function FlightsPage() {
                         >
                           {BAGGAGE_PACKAGE_KGS.map((kg) => (
                             <div className="form-group" key={kg}>
-                              <label className="form-label">Gia hanh ly {kg}kg (VND)</label>
+                              <label className="form-label">Giá hành lý {kg}kg (VND)</label>
                               <input
                                 className="form-control"
                                 type="number"
@@ -632,7 +633,7 @@ export default function FlightsPage() {
                       </div>
                       <div className="form-group full">
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                          Khong mua them hanh ly = 0 VND. User chi duoc chon 4 muc: khong mua, 5kg, 10kg, 20kg.
+                          Không mua thêm hành lý = 0 VND. Khách chỉ được chọn 4 mức: không mua, 5kg, 10kg, 20kg.
                         </div>
                       </div>
                     </div>
@@ -641,8 +642,8 @@ export default function FlightsPage() {
               </div>
             </div>
             <div className="form-footer">
-              <button className="btn btn-secondary" onClick={() => setModal(null)}>Huy</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Dang luu...' : 'Luu'}</button>
+              <button className="btn btn-secondary" onClick={() => setModal(null)}>Huỷ</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu'}</button>
             </div>
           </div>
         </div>
