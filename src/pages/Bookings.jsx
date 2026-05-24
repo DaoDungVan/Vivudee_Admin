@@ -172,7 +172,7 @@ export default function BookingsPage() {
                           <span className="badge badge-info">{paxCount} khách</span>
                           {b.trip_type && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{b.trip_type}</div>}
                         </td>
-                        <td style={{ fontWeight: 600, color: 'var(--success)' }}>{fmtCurrency(b.total_price)}</td>
+                        <td style={{ fontWeight: 600, color: 'var(--success)' }}>{fmtCurrency(b.grand_total ?? b.total_price)}</td>
                         <td><span className={`badge ${STATUS_BADGE[b.status]||'badge-muted'}`}>{STATUS_LABEL[b.status]||b.status}</span></td>
                         <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                           {b.created_at ? new Date(b.created_at).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
@@ -232,7 +232,7 @@ export default function BookingsPage() {
                     ['Người lớn',    detail.total_adults ?? '—'],
                     ['Trẻ em',        detail.total_children ?? '—'],
                     ['Em bé',         detail.total_infants ?? '—'],
-                    ['Tổng tiền',    fmtCurrency(detail.total_price)],
+                    ['Tổng tiền',    fmtCurrency(detail.grand_total ?? detail.total_price)],
                     ['Giữ đến',      detail.held_until ? new Date(detail.held_until).toLocaleString('vi-VN') : '—'],
                     ['Ngày đặt',     detail.created_at ? new Date(detail.created_at).toLocaleString('vi-VN') : '—'],
                   ].map(([k, v]) => (
