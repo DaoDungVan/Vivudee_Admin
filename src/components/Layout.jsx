@@ -8,7 +8,7 @@ import {
 } from 'react-icons/lu'
 
 const navItems = [
-  { to: '/',         icon: <LuLayoutDashboard size={18}/>, label: 'Bảng điều khiển' },
+  { to: '/',         icon: <LuLayoutDashboard size={18}/>, label: 'Tổng quan' },
   { to: '/flights',  icon: <LuPlane size={18}/>,           label: 'Chuyến Bay' },
   { to: '/airports', icon: <LuBuilding2 size={18}/>,       label: 'Sân Bay' },
   { to: '/airlines', icon: <LuPlaneTakeoff size={18}/>,    label: 'Hãng Bay' },

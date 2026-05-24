@@ -1,25 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getAdminRefunds, approveRefund, completeRefund, rejectRefund } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
-import { LuCheck, LuX, LuRefreshCw, LuChevronLeft, LuChevronRight, LuBanknote } from 'react-icons/lu'
+import { LuCheck, LuX, LuRefreshCw, LuChevronLeft, LuChevronRight, LuBanknote, LuSearch } from 'react-icons/lu'
 
 const STATUS_BADGE = {
-  pending:   'badge-warning',
-  approved:  'badge-success',
-  rejected:  'badge-danger',
-  completed: 'badge-success',
-  cancelled: 'badge-muted',
+  pending:    'badge-warning',
+  approved:   'badge-info',
+  processing: 'badge-info',
+  rejected:   'badge-danger',
+  completed:  'badge-success',
+  cancelled:  'badge-muted',
+  failed:     'badge-danger',
 }
 const STATUS_LABEL = {
-  pending:   'Chờ xử lý',
-  approved:  'Đã duyệt – chờ chấp nhận',
-  rejected:  'Từ chối',
-  completed: 'Hoàn tiền xong',
-  cancelled: 'Đã huỷ',
+  pending:    'Chờ xử lý',
+  approved:   'Đã duyệt',
+  processing: 'Đang xử lý',
+  rejected:   'Từ chối',
+  completed:  'Hoàn tiền xong',
+  cancelled:  'Đã huỷ',
+  failed:     'Thất bại',
 }
 
-const fmtCurrency = (n) =>
-  n == null ? '—' : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n))
+const REFUND_STATUSES = ['pending', 'approved', 'processing', 'completed', 'rejected', 'cancelled', 'failed']
+
+const fmtCurrency = (n) => {
+  if (n == null || n === '') return '—'
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(n)) + ' VND'
+}
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('vi-VN') : '—'
 
@@ -60,9 +68,20 @@ export default function RefundsPage() {
         if (requestId !== requestIdRef.current) return
         const d = r.data
         const items = d.data || (Array.isArray(d) ? d : [])
-        const filtered = searching ? items.filter(i => matchesSearch(i, keyword)) : items
-        setData(filtered)
-        setPagination({ total: d.total || filtered.length, total_pages: d.total_pages || 1 })
+
+        if (searching) {
+          const filtered = items.filter(i => matchesSearch(i, keyword))
+          const total = filtered.length
+          const totalPages = Math.max(1, Math.ceil(total / limit))
+          const safePage = Math.min(page, totalPages)
+          setData(filtered.slice((safePage - 1) * limit, safePage * limit))
+          setPagination({ total, total_pages: totalPages })
+          if (safePage !== page) setPage(safePage)
+          return
+        }
+
+        setData(items)
+        setPagination(d.pagination || { total: 0, total_pages: 1 })
       })
       .catch(() => setData([]))
       .finally(() => { if (requestId === requestIdRef.current) setLoading(false) })
@@ -115,11 +134,15 @@ export default function RefundsPage() {
   }
 
   return (
-    <div className="page-content">
+    <>
       <div className="page-header">
-        <h1 className="page-title">Yêu cầu hoàn tiền</h1>
-        <p className="page-subtitle">Quản lý và xử lý các yêu cầu hoàn vé của khách hàng</p>
+        <div>
+          <div className="page-title">Yêu cầu hoàn tiền</div>
+          <div className="page-subtitle">Quản lý và xử lý các yêu cầu hoàn vé của khách hàng</div>
+        </div>
       </div>
+
+      <div className="page-content">
 
       {error && (
         <div className="alert alert-danger" style={{ marginBottom: 16 }}>
@@ -129,29 +152,19 @@ export default function RefundsPage() {
       )}
 
       {/* Filters */}
-      <div className="table-toolbar">
-        <input
-          className="form-control"
-          placeholder="Tìm mã hoàn vé, mã đặt vé, email..."
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1) }}
-          style={{ maxWidth: 300 }}
-        />
-        <select
-          className="form-control"
-          value={filterStatus}
-          onChange={e => { setFilterStatus(e.target.value); setPage(1) }}
-          style={{ maxWidth: 180 }}
-        >
-          <option value="">Tất cả trạng thái</option>
-          <option value="pending">Chờ xử lý</option>
-          <option value="approved">Đã duyệt</option>
-          <option value="rejected">Từ chối</option>
-          <option value="completed">Hoàn tiền xong</option>
-          <option value="cancelled">Đã huỷ</option>
-        </select>
-        <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load} disabled={loading}>
-          {loading ? '...' : <><LuRefreshCw size={14}/> Tải lại</>}
+      <div className="toolbar">
+        <div className="search-box">
+          <span className="search-icon"><LuSearch size={16}/></span>
+          <input placeholder="Tìm mã hoàn vé, mã đặt vé, email..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+        </div>
+        <div className="tabs" style={{ margin: 0 }}>
+          <div className={`tab${filterStatus === '' ? ' active' : ''}`} onClick={() => { setFilterStatus(''); setPage(1) }}>Tất cả</div>
+          {REFUND_STATUSES.map(s => (
+            <div key={s} className={`tab${filterStatus === s ? ' active' : ''}`} onClick={() => { setFilterStatus(s); setPage(1) }}>{STATUS_LABEL[s]}</div>
+          ))}
+        </div>
+        <button className="btn btn-secondary btn-sm ml-auto" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={load} disabled={loading}>
+          {loading ? '...' : <><LuRefreshCw size={14}/> Làm mới</>}
         </button>
       </div>
 
@@ -232,11 +245,21 @@ export default function RefundsPage() {
       </div>
 
       {/* Pagination */}
-      {pagination.total_pages > 1 && (
+      {pagination.total_pages >= 1 && (
         <div className="pagination">
-          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}><LuChevronLeft size={14}/> Trước</button>
-          <span style={{ padding: '0 12px', fontSize: 13 }}>Trang {page} / {pagination.total_pages}</span>
-          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4 }} disabled={page >= pagination.total_pages} onClick={() => setPage(p => p + 1)}>Sau <LuChevronRight size={14}/></button>
+          <div className="pagination-info">Trang {page} / {pagination.total_pages} · Tổng {pagination.total} yêu cầu</div>
+          <div className="pagination-btns">
+            <button className="page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
+            <button className="page-btn" disabled={page === 1} onClick={() => setPage(p => p - 1)}>‹</button>
+            {Array.from({ length: Math.min(7, pagination.total_pages) }, (_, i) => {
+              const start = Math.max(1, Math.min(page - 3, pagination.total_pages - 6))
+              return start + i
+            }).map(p => (
+              <button key={p} className={`page-btn${p === page ? ' active' : ''}`} onClick={() => setPage(p)}>{p}</button>
+            ))}
+            <button className="page-btn" disabled={page >= pagination.total_pages} onClick={() => setPage(p => p + 1)}>›</button>
+            <button className="page-btn" disabled={page >= pagination.total_pages} onClick={() => setPage(pagination.total_pages)}>»</button>
+          </div>
         </div>
       )}
 
@@ -269,6 +292,8 @@ export default function RefundsPage() {
           </div>
         </div>
       )}
-    </div>
+
+      </div>
+    </>
   )
 }

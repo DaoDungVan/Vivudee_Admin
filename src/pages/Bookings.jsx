@@ -21,9 +21,9 @@ const matchesBookingSearch = (booking, keyword) => {
   ].some(value => String(value || '').toLowerCase().includes(q))
 }
 
-const BOOKING_STATUSES = ['pending', 'confirmed', 'cancelled', 'expired']
-const STATUS_BADGE = { pending: 'badge-warning', confirmed: 'badge-success', cancelled: 'badge-danger', expired: 'badge-muted', refunded: 'badge-muted' }
-const STATUS_LABEL = { pending: 'Chờ xác nhận', confirmed: 'Đã xác nhận', cancelled: 'Đã huỷ', expired: 'Hết hạn', refunded: 'Hoàn tiền' }
+const BOOKING_STATUSES = ['pending', 'confirmed', 'refund_pending', 'refunded', 'cancelled', 'expired']
+const STATUS_BADGE  = { pending: 'badge-warning', confirmed: 'badge-success', cancelled: 'badge-danger', expired: 'badge-muted', refund_pending: 'badge-info', refunded: 'badge-info' }
+const STATUS_LABEL  = { pending: 'Chờ thanh toán', confirmed: 'Đã xác nhận', cancelled: 'Đã huỷ', expired: 'Hết hạn', refund_pending: 'Chờ hoàn tiền', refunded: 'Hoàn tiền xong' }
 
 const fmtCurrency = (n) => {
   if (n == null || n === '') return '—'
