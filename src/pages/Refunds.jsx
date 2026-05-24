@@ -50,6 +50,7 @@ export default function RefundsPage() {
   const [actionLoading, setActionLoading] = useState(null)
   const [rejectModal, setRejectModal] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [confirmModal, setConfirmModal] = useState(null)
   const [error, setError]         = useState('')
   const requestIdRef              = useRef(0)
   const debouncedSearch           = useDebouncedValue(search)
@@ -89,29 +90,26 @@ export default function RefundsPage() {
 
   useEffect(() => { load() }, [load])
 
-  const handleApprove = async (code) => {
-    if (!window.confirm(`Xác nhận duyệt hoàn tiền ${code}?`)) return
-    setActionLoading(code + '_approve')
-    setError('')
-    try {
-      await approveRefund(code)
-      load()
-    } catch (e) {
-      setError(e.response?.data?.error || e.response?.data?.message || 'Lỗi khi duyệt')
-    } finally {
-      setActionLoading(null)
-    }
+  const handleApprove = (code) => {
+    setConfirmModal({ code, action: 'approve', title: 'Duyệt hoàn tiền', message: `Xác nhận duyệt yêu cầu hoàn tiền`, btnLabel: 'Duyệt', btnClass: 'btn-success' })
   }
 
-  const handleComplete = async (code) => {
-    if (!window.confirm(`Xác nhận chấp nhận hoàn tiền ${code}? Tiền sẽ được hoàn cho khách.`)) return
-    setActionLoading(code + '_complete')
+  const handleComplete = (code) => {
+    setConfirmModal({ code, action: 'complete', title: 'Xác nhận hoàn tiền', message: `Tiền sẽ được hoàn trả cho khách hàng. Hành động này không thể hoàn tác.`, btnLabel: 'Xác nhận hoàn tiền', btnClass: 'btn-primary' })
+  }
+
+  const handleConfirmSubmit = async () => {
+    if (!confirmModal) return
+    const { code, action } = confirmModal
+    setActionLoading(code + '_' + action)
     setError('')
+    setConfirmModal(null)
     try {
-      await completeRefund(code)
+      if (action === 'approve') await approveRefund(code)
+      else await completeRefund(code)
       load()
     } catch (e) {
-      setError(e.response?.data?.error || e.response?.data?.message || 'Lỗi khi chấp nhận hoàn tiền')
+      setError(e.response?.data?.error || e.response?.data?.message || 'Lỗi xử lý')
     } finally {
       setActionLoading(null)
     }
@@ -287,6 +285,28 @@ export default function RefundsPage() {
               <button className="btn btn-secondary" onClick={() => { setRejectModal(null); setError('') }}>Huỷ</button>
               <button className="btn btn-danger" onClick={handleRejectSubmit} disabled={!!actionLoading}>
                 {actionLoading?.includes('_reject') ? 'Đang xử lý...' : 'Xác nhận từ chối'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Modal (approve / complete) */}
+      {confirmModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setConfirmModal(null) }}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <div className="modal-title">{confirmModal.title}</div>
+              <button className="modal-close" onClick={() => setConfirmModal(null)}><LuX size={18}/></button>
+            </div>
+            <div style={{ padding: '4px 0 20px', fontSize: 13, color: 'var(--text-secondary)' }}>
+              <div style={{ marginBottom: 8 }}>Mã hoàn vé: <strong style={{ color: 'var(--text-primary)' }}>{confirmModal.code}</strong></div>
+              <div>{confirmModal.message}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmModal(null)}>Huỷ</button>
+              <button className={`btn ${confirmModal.btnClass}`} onClick={handleConfirmSubmit}>
+                <LuCheck size={14} style={{ marginRight: 4 }}/>{confirmModal.btnLabel}
               </button>
             </div>
           </div>
