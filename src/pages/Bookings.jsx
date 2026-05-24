@@ -27,7 +27,7 @@ const STATUS_LABEL  = { pending: 'Chờ thanh toán', confirmed: 'Đã xác nh�
 
 const fmtCurrency = (n) => {
   if (n == null || n === '') return '—'
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n))
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(n)) + ' VND'
 }
 
 export default function BookingsPage() {
