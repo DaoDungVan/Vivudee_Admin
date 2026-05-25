@@ -602,7 +602,7 @@ export default function DashboardPage() {
                       </div>
                       <div style={{ flexShrink: 0, textAlign: 'right' }}>
                         <div style={{ fontWeight: 700, fontSize: 13, color: (b.status === 'confirmed' || b.status === 'pending') ? '#22c55e' : 'var(--text-muted)' }}>
-                          {fmtCurrency(b.total_price)}
+                          {fmtCurrency(b.final_amount ?? b.grand_total ?? b.total_price)}
                         </div>
                         <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
                           {b.created_at ? new Date(b.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
@@ -642,7 +642,7 @@ export default function DashboardPage() {
               </div>
             ) : (() => {
                 const statusCounts = dayBookings.reduce((acc, b) => { acc[b.status] = (acc[b.status] || 0) + 1; return acc }, {})
-                const validRevenue = dayBookings.filter(b => b.status === 'confirmed' || b.status === 'pending').reduce((s, b) => s + Number(b.total_price || 0), 0)
+                const validRevenue = dayBookings.filter(b => ['confirmed','refund_pending','refunded'].includes(b.status)).reduce((s, b) => s + Number(b.final_amount ?? b.grand_total ?? b.total_price || 0), 0)
                 const totalDay = dayBookings.length
                 return (
               <>
@@ -699,7 +699,7 @@ export default function DashboardPage() {
                             <td style={{ textAlign: 'center' }}>{totalPax}</td>
                             <td><span className={`badge ${STATUS_BADGE[b.status] || 'badge-muted'}`}>{STATUS_LABEL_VI[b.status] || b.status}</span></td>
                             <td style={{ fontWeight: 600, color: (b.status === 'confirmed' || b.status === 'pending') ? '#22c55e' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                              {fmtCurrency(b.total_price)}
+                              {fmtCurrency(b.final_amount ?? b.grand_total ?? b.total_price)}
                             </td>
                             <td style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                               {b.created_at ? new Date(b.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) : '—'}
