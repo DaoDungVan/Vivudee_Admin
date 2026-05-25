@@ -5,23 +5,86 @@ export const SOCKET_BASE_URL = BASE.replace(/\/api\/?$/, '')
 
 const api = axios.create({ baseURL: BASE })
 
-// Attach token
+// Attach access token vào mỗi request
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('token')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
   return cfg
 })
 
-// Auto-logout on 401: token hết hạn → clear storage → về login
+// ── Silent token refresh ──────────────────────────────────────────────────────
+// Khi access token hết hạn (401): thử refresh bằng refresh_token.
+// Nếu refresh thành công → cập nhật token + retry request gốc, admin không bị out.
+// Nếu refresh_token cũng hết hạn (30 ngày) → clear session + về login.
+
+let isRefreshing = false
+let pendingQueue = [] // các request đang chờ refresh hoàn tất
+
+const flushQueue = (newToken, error) => {
+  pendingQueue.forEach(({ resolve, reject }) => error ? reject(error) : resolve(newToken))
+  pendingQueue = []
+}
+
+const clearSession = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user')
+  if (!window.location.pathname.startsWith('/login')) {
+    window.location.replace('/login')
+  }
+}
+
 api.interceptors.response.use(
   res => res,
-  err => {
-    if (err.response?.status === 401 && !window.location.pathname.startsWith('/login')) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.replace('/login')
+  async err => {
+    const original = err.config
+
+    // Bỏ qua nếu không phải 401, hoặc đây chính là request refresh (tránh loop)
+    if (err.response?.status !== 401 || original._isRefreshCall) {
+      return Promise.reject(err)
     }
-    return Promise.reject(err)
+
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (!refreshToken) {
+      clearSession()
+      return Promise.reject(err)
+    }
+
+    // Nếu đang refresh rồi → xếp hàng chờ
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        pendingQueue.push({ resolve, reject })
+      }).then(newToken => {
+        original.headers.Authorization = `Bearer ${newToken}`
+        return api(original)
+      })
+    }
+
+    isRefreshing = true
+    original._retry = true
+
+    try {
+      // Dùng axios thuần để tránh interceptor tự gọi lại
+      const res = await axios.post(
+        `${BASE}/auth/refresh`,
+        { refresh_token: refreshToken },
+        { _isRefreshCall: true }
+      )
+      const { token: newToken, refresh_token: newRefresh } = res.data
+
+      localStorage.setItem('token', newToken)
+      if (newRefresh) localStorage.setItem('refresh_token', newRefresh)
+
+      flushQueue(newToken, null)
+      original.headers.Authorization = `Bearer ${newToken}`
+      return api(original)
+    } catch (refreshErr) {
+      flushQueue(null, refreshErr)
+      clearSession()
+      return Promise.reject(refreshErr)
+    } finally {
+      isRefreshing = false
+    }
   }
 )
 

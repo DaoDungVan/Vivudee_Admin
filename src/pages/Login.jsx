@@ -18,11 +18,12 @@ export default function LoginPage() {
     setError('')
     try {
       const res = await login(form)
-      const { token, user } = res.data
+      const { token, refresh_token, user } = res.data
       if (user.role !== 'admin') {
         setError('Tài khoản không có quyền admin')
         return
       }
+      if (refresh_token) localStorage.setItem('refresh_token', refresh_token)
       signin(user, token)
       navigate('/')
     } catch (err) {
