@@ -71,6 +71,12 @@ const buildThreadPreview = (detail) => {
   }
 }
 
+const isEmojiOnlyContent = (text) => {
+  const t = String(text || '').trim()
+  if (!t || t.length > 10) return false
+  return /^[\p{Emoji_Presentation}\p{Extended_Pictographic}️‍︎\s]+$/u.test(t)
+}
+
 const MESSAGE_COLLAPSE_CHAR_LIMIT = 280
 const MESSAGE_COLLAPSE_LINE_LIMIT = 4
 
@@ -668,6 +674,24 @@ export default function ChatPage() {
     }
   }
 
+  const handleReplyPaste = async (event) => {
+    const items = Array.from(event.clipboardData?.items || [])
+    const imageItems = items.filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    if (!imageItems.length) return
+
+    event.preventDefault()
+    const files = imageItems.map((item) => item.getAsFile()).filter(Boolean)
+    if (!files.length) return
+
+    try {
+      const nextAttachments = await createAttachmentsFromFiles(files, attachments.length)
+      setAttachments((previous) => [...previous, ...nextAttachments])
+      setError('')
+    } catch (pasteError) {
+      setError(pasteError?.message || 'Không tải được ảnh từ clipboard')
+    }
+  }
+
   const handleMediaLoad = useCallback(() => {
     const element = messagesRef.current
     if (!element) return
@@ -777,21 +801,76 @@ export default function ChatPage() {
 
                 <div className="chat-message-area">
                   <div className="chat-message-list" ref={messagesRef} onScroll={handleMessagesScroll}>
-                    {(detail.messages || []).map((message) => (
-                      <div
-                        key={message.id}
-                        className={`chat-message-row${message.sender_role === 'admin' ? ' mine' : ''}`}
-                      >
-                        <div className={`chat-message-bubble${message.sender_role === 'assistant' ? ' chat-ai-bubble' : ''}`}>
-                          <div className="chat-message-meta">
-                            <span>{message.sender_name || (message.sender_role === 'admin' ? 'Admin' : 'User')}</span>
-                            <span>{new Date(message.created_at).toLocaleString('vi-VN')}</span>
-                          </div>
-                          <MessageAttachments message={message} onMediaLoad={handleMediaLoad} />
-                          <ExpandableMessageText content={message.content} />
+                    {(detail.messages || []).map((message) => {
+                      const isAdmin = message.sender_role === 'admin'
+                      const isAssistant = message.sender_role === 'assistant'
+                      const senderName = message.sender_name || (isAdmin ? 'Admin' : 'User')
+
+                      const msgAttachments = getMessageAttachments(message)
+                      const hasText = !!String(message.content || '').trim()
+                      const hasOnlyVisual = msgAttachments.length > 0 && msgAttachments.every((a) => isVisualAttachment(a))
+                      const emojiOnly = !msgAttachments.length && isEmojiOnlyContent(message.content)
+
+                      const rowClass = `chat-message-row${isAdmin ? ' mine' : ''}`
+                      const bubbleClass = `chat-message-bubble${isAssistant ? ' chat-ai-bubble' : ''}`
+
+                      const metaEl = (
+                        <div className="chat-message-meta">
+                          <span>{senderName}</span>
+                          <span>{new Date(message.created_at).toLocaleString('vi-VN')}</span>
                         </div>
-                      </div>
-                    ))}
+                      )
+
+                      // Ảnh thuần → không bubble
+                      if (!hasText && hasOnlyVisual) {
+                        return (
+                          <div key={message.id} className={rowClass}>
+                            <div className="chat-message-naked">
+                              {metaEl}
+                              <MessageAttachments message={message} onMediaLoad={handleMediaLoad} />
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      // Emoji thuần → không bubble, font to
+                      if (emojiOnly) {
+                        return (
+                          <div key={message.id} className={rowClass}>
+                            <div className="chat-message-naked">
+                              {metaEl}
+                              <span className="chat-emoji-message">{message.content}</span>
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      // Chữ + ảnh → ảnh không bubble, chữ trong bubble riêng
+                      if (hasText && hasOnlyVisual) {
+                        return (
+                          <div key={message.id} className={rowClass}>
+                            <div className="chat-message-naked">
+                              {metaEl}
+                              <MessageAttachments message={message} onMediaLoad={handleMediaLoad} />
+                              <div className={`${bubbleClass} chat-bubble-attached`}>
+                                <ExpandableMessageText content={message.content} />
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      // Mặc định: bubble đầy đủ
+                      return (
+                        <div key={message.id} className={rowClass}>
+                          <div className={bubbleClass}>
+                            {metaEl}
+                            <MessageAttachments message={message} onMediaLoad={handleMediaLoad} />
+                            <ExpandableMessageText content={message.content} />
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
 
                   {showJumpToLatest && (
@@ -870,6 +949,7 @@ export default function ChatPage() {
                       value={reply}
                       onChange={(event) => setReply(event.target.value)}
                       onKeyDown={handleReplyKeyDown}
+                      onPaste={handleReplyPaste}
                       placeholder="Nhập phản hồi cho khách..."
                     />
                     <input

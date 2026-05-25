@@ -1042,6 +1042,38 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   justify-content: flex-end;
 }
 
+/* Naked wrapper — ảnh thuần và emoji thuần không có bubble */
+.chat-message-naked {
+  max-width: min(78%, 720px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.chat-message-row.mine .chat-message-naked {
+  align-items: flex-end;
+}
+
+.chat-message-naked .chat-image-attachment {
+  max-width: 260px;
+  width: 100%;
+}
+
+/* Emoji thuần — không bubble, font to */
+.chat-emoji-message {
+  font-size: 34px;
+  line-height: 1.25;
+  display: block;
+}
+
+/* Bubble chữ đính kèm dưới ảnh */
+.chat-bubble-attached {
+  margin-top: 5px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  padding-top: 8px;
+}
+
 .chat-message-bubble {
   max-width: min(78%, 720px);
   border-radius: 16px 16px 16px 6px;
