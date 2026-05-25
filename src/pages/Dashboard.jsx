@@ -394,22 +394,24 @@ export default function DashboardPage() {
                   <div className="empty-state"><div className="empty-icon"><LuCalendarDays size={36}/></div><div className="empty-text">Không có dữ liệu</div></div>
                 ) : (
                   <>
-                    <ResponsiveContainer width="100%" height={190} style={{ outline: 'none' }}>
-                      <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 10 }} style={{ outline: 'none' }}
-                        onClick={(data) => { if (data?.activeLabel) openDayDetail(data.activeLabel) }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                        <XAxis dataKey="dateStr" tick={<CustomXTick />} tickLine={false} axisLine={false} height={36} />
-                        <YAxis tickFormatter={n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n}
-                          tick={{ fontSize: 10, fill: '#94a3b8' }} width={40} axisLine={false} tickLine={false} />
-                        <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'rgba(59,130,246,0.07)', stroke: 'none' }} />
-                        <Bar dataKey="revenue" radius={[4, 4, 0, 0]} cursor="pointer" maxBarSize={48} minPointSize={3}
-                          onClick={(barData) => openDayDetail(barData.dateStr)}>
-                          {chartData.map((d, i) => (
-                            <Cell key={i} fill={d.isToday ? '#22c55e' : d.isWknd ? '#8b5cf6' : '#3b82f6'} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <div tabIndex={-1} style={{ outline: 'none' }}>
+                      <ResponsiveContainer width="100%" height={190} style={{ outline: 'none' }}>
+                        <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 10 }} style={{ outline: 'none' }}
+                          onClick={(data) => { if (data?.activeLabel) openDayDetail(data.activeLabel) }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                          <XAxis dataKey="dateStr" tick={<CustomXTick />} tickLine={false} axisLine={false} height={36} />
+                          <YAxis tickFormatter={n => n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : n}
+                            tick={{ fontSize: 10, fill: '#94a3b8' }} width={40} axisLine={false} tickLine={false} />
+                          <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'rgba(59,130,246,0.07)', stroke: 'none' }} />
+                          <Bar dataKey="revenue" radius={[4, 4, 0, 0]} cursor="pointer" maxBarSize={48} minPointSize={3}
+                            onClick={(barData) => openDayDetail(barData.dateStr)}>
+                            {chartData.map((d, i) => (
+                              <Cell key={i} fill={d.isToday ? '#22c55e' : d.isWknd ? '#8b5cf6' : '#3b82f6'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                     <div style={{ display: 'flex', borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 2 }}>
                       {[
                         ['Tất cả vé', totalDailyAllVe.toLocaleString('vi-VN'), null],
