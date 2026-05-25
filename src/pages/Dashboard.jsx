@@ -160,6 +160,7 @@ export default function DashboardPage() {
   const [recentBookings, setRecentBookings]     = useState([])
   const [todayFlights, setTodayFlights]         = useState([])
   const [todayFlightTotal, setTodayFlightTotal] = useState(0)
+  const [statsError, setStatsError]             = useState(null)
 
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true)
@@ -170,15 +171,22 @@ export default function DashboardPage() {
       statParams.to_date   = to_date
     }
     const todayStr = localToday()
+    getStatistics(statParams)
+      .then(statRes => {
+        setStats(statRes.data?.data || statRes.data || {})
+        setStatsError(null)
+      })
+      .catch(err => {
+        setStatsError(err?.response?.data?.error || 'Lỗi tải thống kê')
+        console.error('[stats]', err?.response?.data || err)
+      })
     Promise.all([
-      getStatistics(statParams),
       getFlights({ page: 1, limit: 1, show_hidden: true }),
       getUsers({ page: 1, limit: 1 }),
       getBookings({ page: 1, limit: 8 }),
       getFlights({ page: 1, limit: 8, departure_date: todayStr, show_hidden: true }),
     ])
-      .then(([statRes, flightRes, userRes, bookingRes, todayFlightRes]) => {
-        setStats(statRes.data?.data || statRes.data || {})
+      .then(([flightRes, userRes, bookingRes, todayFlightRes]) => {
         setCounts({
           flights:  flightRes.data?.pagination?.total  ?? 0,
           users:    userRes.data?.pagination?.total    ?? 0,
@@ -305,6 +313,20 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
+            {/* ── Stats error banner ── */}
+            {statsError && (
+              <div style={{
+                background: 'var(--danger-bg)', border: '1px solid var(--danger)',
+                borderRadius: 10, padding: '10px 16px', marginBottom: 16,
+                display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                <LuTriangleAlert size={16} color="var(--danger)" style={{ flexShrink: 0 }}/>
+                <span style={{ fontSize: 13, color: 'var(--danger)' }}>
+                  Lỗi tải thống kê: <b>{statsError}</b> — Kiểm tra Render logs để biết chi tiết.
+                </span>
+              </div>
+            )}
+
             {/* ── Alert banner ── */}
             {refundPendingCount > 0 && (
               <div style={{
