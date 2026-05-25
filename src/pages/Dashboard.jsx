@@ -234,20 +234,29 @@ export default function DashboardPage() {
   const avgOrderValue     = validCount > 0 ? Math.round(totalRevenue / validCount) : 0
   const refundPendingCount = getStatusCount('refund_pending')
 
-  const today         = localToday()
-  const dailySorted   = [...dailyRevenue].sort((a, b) => toDateStr(a.date) < toDateStr(b.date) ? -1 : 1)
+  const today = localToday()
 
-  const chartData = dailySorted.map(r => {
-    const ds    = toDateStr(r.date)
-    const d     = new Date(ds + 'T00:00:00')
+  // Build full 7-day range (today VN and 6 days back), fill 0 for days without data
+  const revenueByDate = {}
+  dailyRevenue.forEach(r => { revenueByDate[toDateStr(r.date)] = r })
+
+  const [ty, tm, td] = today.split('-').map(Number)
+  const chartData = Array.from({ length: 7 }, (_, i) => {
+    const dateObj = new Date(ty, tm - 1, td - (6 - i))
+    const ds = [
+      dateObj.getFullYear(),
+      String(dateObj.getMonth() + 1).padStart(2, '0'),
+      String(dateObj.getDate()).padStart(2, '0'),
+    ].join('-')
+    const r = revenueByDate[ds] || {}
     return {
-      dateStr:       ds,
-      label:         ds,
-      revenue:       Number(r.revenue) || 0,
-      bookings:      Number(r.bookings) || 0,
-      valid_bookings:Number(r.valid_bookings) || 0,
-      isToday:       ds === today,
-      isWknd:        d.getDay() === 0 || d.getDay() === 6,
+      dateStr:        ds,
+      label:          ds,
+      revenue:        Number(r.revenue) || 0,
+      bookings:       Number(r.bookings) || 0,
+      valid_bookings: Number(r.valid_bookings) || 0,
+      isToday:        ds === today,
+      isWknd:         dateObj.getDay() === 0 || dateObj.getDay() === 6,
     }
   })
 
