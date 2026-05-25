@@ -571,11 +571,11 @@ export default function FlightsPage() {
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Giờ khởi hành *</label>
+                <label className="form-label">Giờ khởi hành * <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>(Giờ Việt Nam, ICT)</span></label>
                 <input className="form-control" type="datetime-local" value={form.departure_time} onChange={(e) => setField('departure_time', e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">Giờ đến *</label>
+                <label className="form-label">Giờ đến * <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>(Giờ Việt Nam, ICT)</span></label>
                 <input className="form-control" type="datetime-local" value={form.arrival_time} onChange={(e) => setField('arrival_time', e.target.value)} />
               </div>
               <div className="form-group full">

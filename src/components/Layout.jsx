@@ -5,7 +5,14 @@ import LogoNav from '../assets/imgs/LogoNav.svg'
 import {
   LuLayoutDashboard, LuPlane, LuBuilding2, LuPlaneTakeoff, LuUsers,
   LuTicket, LuTag, LuMessageSquare, LuUndo2, LuSettings, LuX, LuMenu, LuLogOut,
+  LuTriangleAlert,
 } from 'react-icons/lu'
+
+const getLocalTZ = () => Intl.DateTimeFormat().resolvedOptions().timeZone
+const isVietnamTZ = () => {
+  const tz = getLocalTZ()
+  return tz === 'Asia/Ho_Chi_Minh' || tz === 'Asia/Saigon'
+}
 
 const navItems = [
   { to: '/',         icon: <LuLayoutDashboard size={18}/>, label: 'Tổng quan' },
@@ -92,6 +99,20 @@ export default function Layout() {
       </aside>
 
       <div className="main-content">
+        {!isVietnamTZ() && (
+          <div style={{
+            background: '#fef3c7', borderBottom: '1px solid #f59e0b',
+            padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8,
+            fontSize: 12, color: '#92400e',
+          }}>
+            <LuTriangleAlert size={14} style={{ flexShrink: 0, color: '#d97706' }}/>
+            <span>
+              <b>Múi giờ khác Việt Nam</b> — Trình duyệt đang dùng <b>{getLocalTZ()}</b>.
+              Tất cả thời gian trong hệ thống theo <b>giờ Việt Nam (ICT, UTC+7)</b>.
+              Khi nhập giờ khởi hành / giờ đến, hãy nhập theo giờ Việt Nam.
+            </span>
+          </div>
+        )}
         <Outlet />
       </div>
     </div>

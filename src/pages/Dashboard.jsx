@@ -35,10 +35,15 @@ const toDateStr = (val) => {
   return m ? m[0] : ''
 }
 
-const localToday = () => {
-  const d = new Date()
-  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
+const toVNDateStr = (val) => {
+  if (!val) return ''
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(val))
+  } catch { return '' }
 }
+
+const localToday = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())
 
 // ── Lookup maps ────────────────────────────────────────────────────────────────
 
@@ -201,7 +206,7 @@ export default function DashboardPage() {
     try {
       const res = await getBookings({ from_date: dateStr, to_date: dateStr, limit: 500, page: 1 })
       const all = res.data?.data || []
-      setDayBookings(all.filter(b => toDateStr(b.created_at) === dateStr))
+      setDayBookings(all.filter(b => toVNDateStr(b.created_at) === dateStr))
     } catch {
       setDayBookings([])
     } finally {
@@ -664,7 +669,7 @@ export default function DashboardPage() {
                               {fmtCurrency(b.total_price)}
                             </td>
                             <td style={{ fontSize: 12, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {b.created_at ? new Date(b.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'}
+                              {b.created_at ? new Date(b.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }) : '—'}
                             </td>
                           </tr>
                         )
