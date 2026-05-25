@@ -209,7 +209,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     load()
-    const interval = setInterval(() => load(true), 30_000)
+    const interval = setInterval(() => load(true), 10_000)
     return () => clearInterval(interval)
   }, [load])
 
@@ -299,7 +299,7 @@ export default function DashboardPage() {
             onChange={e => setDateRange(p => ({ ...p, to_date: e.target.value }))} style={{ fontSize: 13 }} />
           <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-            Tự động cập nhật 30s
+            Tự động cập nhật 10s
           </span>
           <button className="btn btn-primary btn-sm" onClick={() => { dateRangeRef.current = dateRange; load() }}>Lọc</button>
           <button className="btn btn-secondary btn-sm" onClick={() => {
