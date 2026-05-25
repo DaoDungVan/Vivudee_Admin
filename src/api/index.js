@@ -12,10 +12,17 @@ api.interceptors.request.use(cfg => {
   return cfg
 })
 
-// Auto-logout on 401
+// Auto-logout on 401: token hết hạn → clear storage → về login
 api.interceptors.response.use(
   res => res,
-  err => Promise.reject(err)
+  err => {
+    if (err.response?.status === 401 && !window.location.pathname.startsWith('/login')) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.replace('/login')
+    }
+    return Promise.reject(err)
+  }
 )
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
