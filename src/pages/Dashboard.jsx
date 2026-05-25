@@ -242,7 +242,7 @@ export default function DashboardPage() {
   const totalAllBookings = bookingSummary.reduce((sum, r) => sum + Number(r.count), 0)
 
   const getStatusCount    = (st) => Number(bookingSummary.find(r => r.status === st)?.count || 0)
-  const validCount        = (Number(overview.confirmed) || 0) + (Number(overview.pending) || 0)
+  const validCount        = Number(overview.total_bookings) || 0
   const cancelExpireCount = (Number(overview.cancelled) || 0) + (Number(overview.expired) || 0)
   const successRate       = totalAllBookings > 0 ? ((Number(overview.confirmed) || 0) / totalAllBookings * 100).toFixed(1) : null
   const refundRate        = totalRevenue > 0 ? (totalRefunded / totalRevenue * 100).toFixed(1) : null
@@ -522,7 +522,7 @@ export default function DashboardPage() {
                   ['Tỷ lệ xác nhận thành công',     successRate != null ? `${successRate}%` : '—'],
                   ['Đã hoàn cho khách / doanh thu gộp', refundRate != null ? `${refundRate}%` : '—'],
                   ['Giá trị TB mỗi đặt vé hợp lệ',  fmtCurrency(avgOrderValue)],
-                  ['Hợp lệ (đã XN + đang chờ)',     `${validCount.toLocaleString('vi-VN')} vé`],
+                  ['Hợp lệ (XN + chờ hoàn + đã hoàn)', `${validCount.toLocaleString('vi-VN')} vé`],
                   ['Huỷ + hết hạn',                 `${cancelExpireCount.toLocaleString('vi-VN')} vé`],
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
