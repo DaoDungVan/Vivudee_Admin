@@ -648,6 +648,9 @@ export default function DashboardPage() {
             ) : (() => {
                 const statusCounts = dayBookings.reduce((acc, b) => { acc[b.status] = (acc[b.status] || 0) + 1; return acc }, {})
                 const validRevenue = dayBookings.filter(b => ['confirmed','refund_pending','refunded'].includes(b.status)).reduce((s, b) => s + Number(b.grand_total ?? b.total_price ?? 0), 0)
+                const dayChart = chartData.find(c => c.dateStr === selectedDay)
+                const refundedAmount = dayChart?.refunded ?? 0
+                const netRevenue = validRevenue - refundedAmount
                 const totalDay = dayBookings.length
                 return (
               <>
@@ -672,10 +675,16 @@ export default function DashboardPage() {
                       )
                     })}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center', minWidth: 160 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, justifyContent: 'center', minWidth: 160 }}>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Tổng đặt vé: <b style={{ color: 'var(--text-primary)' }}>{totalDay}</b></div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Doanh thu hợp lệ:</div>
-                    <div style={{ fontWeight: 700, color: '#22c55e', fontSize: 15 }}>{fmtCurrency(validRevenue)}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Doanh thu:</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 13 }}>{fmtCurrency(validRevenue)}</div>
+                    {refundedAmount > 0 && <>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Hoàn tiền: <span style={{ color: '#ef4444', fontWeight: 600 }}>-{fmtCurrency(refundedAmount)}</span></div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 4, marginTop: 2 }}>Thực thu:</div>
+                      <div style={{ fontWeight: 700, color: '#22c55e', fontSize: 15 }}>{fmtCurrency(netRevenue)}</div>
+                    </>}
+                    {refundedAmount === 0 && <div style={{ fontWeight: 700, color: '#22c55e', fontSize: 15 }}>{fmtCurrency(validRevenue)}</div>}
                   </div>
                 </div>
                 <div className="table-wrapper" style={{ maxHeight: 420, overflowY: 'auto' }}>
