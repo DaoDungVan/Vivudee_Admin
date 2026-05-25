@@ -647,7 +647,7 @@ export default function DashboardPage() {
               </div>
             ) : (() => {
                 const statusCounts = dayBookings.reduce((acc, b) => { acc[b.status] = (acc[b.status] || 0) + 1; return acc }, {})
-                const validRevenue = dayBookings.filter(b => ['confirmed','refund_pending','refunded'].includes(b.status)).reduce((s, b) => s + Number(b.grand_total ?? b.total_price || 0), 0)
+                const validRevenue = dayBookings.filter(b => ['confirmed','refund_pending','refunded'].includes(b.status)).reduce((s, b) => s + Number(b.grand_total ?? b.total_price ?? 0), 0)
                 const totalDay = dayBookings.length
                 return (
               <>
