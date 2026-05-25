@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { getStatistics, getFlights, getUsers, getBookings } from '../api'
+import { getStatistics, getFlights, getUsers, getBookings, getAdminRefunds } from '../api'
 import { useAuth } from '../context/AuthContext'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -165,6 +165,7 @@ export default function DashboardPage() {
   const [todayFlights, setTodayFlights]         = useState([])
   const [todayFlightTotal, setTodayFlightTotal] = useState(0)
   const [statsError, setStatsError]             = useState(null)
+  const [pendingRefunds, setPendingRefunds]     = useState(0)
 
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true)
@@ -189,8 +190,9 @@ export default function DashboardPage() {
       getUsers({ page: 1, limit: 1 }),
       getBookings({ page: 1, limit: 8 }),
       getFlights({ page: 1, limit: 8, departure_date: todayStr, show_hidden: true }),
+      getAdminRefunds({ status: 'pending', limit: 1, page: 1 }),
     ])
-      .then(([flightRes, userRes, bookingRes, todayFlightRes]) => {
+      .then(([flightRes, userRes, bookingRes, todayFlightRes, refundRes]) => {
         setCounts({
           flights:  flightRes.data?.pagination?.total  ?? 0,
           users:    userRes.data?.pagination?.total    ?? 0,
@@ -199,6 +201,7 @@ export default function DashboardPage() {
         setRecentBookings(bookingRes.data?.data || [])
         setTodayFlights(todayFlightRes.data?.data || [])
         setTodayFlightTotal(todayFlightRes.data?.pagination?.total ?? 0)
+        setPendingRefunds(refundRes.data?.pagination?.total ?? 0)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -333,7 +336,7 @@ export default function DashboardPage() {
             )}
 
             {/* ── Alert banner ── */}
-            {refundPendingCount > 0 && (
+            {pendingRefunds > 0 && (
               <div style={{
                 background: 'var(--danger-bg)', border: '1px solid var(--danger)',
                 borderRadius: 10, padding: '10px 16px', marginBottom: 16,
@@ -341,7 +344,7 @@ export default function DashboardPage() {
               }}>
                 <LuTriangleAlert size={16} color="var(--danger)" style={{ flexShrink: 0 }}/>
                 <span style={{ fontSize: 13 }}>
-                  <b style={{ color: 'var(--danger)' }}>{refundPendingCount} đặt vé</b> đang chờ xử lý hoàn tiền —{' '}
+                  <b style={{ color: 'var(--danger)' }}>{pendingRefunds} yêu cầu hoàn tiền</b> đang chờ xử lý —{' '}
                   <Link to="/refunds" style={{ color: 'var(--danger)', fontWeight: 700, textDecoration: 'underline' }}>Xem ngay</Link>
                 </span>
               </div>
