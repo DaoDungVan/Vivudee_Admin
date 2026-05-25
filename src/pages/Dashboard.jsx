@@ -116,6 +116,10 @@ function RevenueTooltip({ active, payload }) {
         {d.isToday && <span style={{ marginLeft: 6, background: '#22c55e', color: '#000', borderRadius: 4, padding: '1px 5px', fontSize: 10 }}>Hôm nay</span>}
       </div>
       <div style={{ color: '#94a3b8' }}>Doanh thu: <span style={{ color: '#22c55e', fontWeight: 700 }}>{fmtCurrency(d.revenue)}</span></div>
+      {d.refunded > 0 && <>
+        <div style={{ color: '#94a3b8' }}>Hoàn tiền: <span style={{ color: '#ef4444', fontWeight: 600 }}>-{fmtCurrency(d.refunded)}</span></div>
+        <div style={{ color: '#94a3b8', borderTop: '1px solid #334155', paddingTop: 4, marginTop: 2 }}>Thực thu: <span style={{ color: '#22c55e', fontWeight: 700 }}>{fmtCurrency(d.revenue - d.refunded)}</span></div>
+      </>}
       <div style={{ color: '#94a3b8' }}>Tất cả vé: <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{Number(d.bookings || 0).toLocaleString('vi-VN')}</span></div>
       <div style={{ color: '#94a3b8' }}>Hợp lệ: <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{Number(d.valid_bookings || 0).toLocaleString('vi-VN')}</span></div>
       <div style={{ fontSize: 10, color: '#64748b', marginTop: 4 }}>Nhấn để xem chi tiết</div>
@@ -261,6 +265,7 @@ export default function DashboardPage() {
       dateStr:        ds,
       label:          ds,
       revenue:        Number(r.revenue) || 0,
+      refunded:       Number(r.refunded) || 0,
       bookings:       Number(r.bookings) || 0,
       valid_bookings: Number(r.valid_bookings) || 0,
       isToday:        ds === today,
