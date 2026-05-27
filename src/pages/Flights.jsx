@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getFlights, createFlight, updateFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
-import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert } from 'react-icons/lu'
+import { Link } from 'react-router-dom'
+import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert, LuZap, LuCalculator, LuRefreshCw, LuCalendarDays } from 'react-icons/lu'
 
 const SEARCH_FETCH_LIMIT = 500
+
 const SORT_OPTIONS = [
   { value: '', label: 'Sắp xếp khởi hành' },
   { value: 'desc', label: 'Chuyến mới nhất' },
@@ -12,115 +14,149 @@ const SORT_OPTIONS = [
 const fmtPrice = (n) => n ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n)) : '—'
 
 const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
-const SEAT_CLASS_LABELS = {
-  economy: 'Economy',
-  business: 'Business',
-  first: 'First Class',
-}
+const SEAT_CLASS_LABELS = { economy: 'Economy', business: 'Business', first: 'First Class' }
 const BAGGAGE_PACKAGE_KGS = [5, 10, 20]
 const SEAT_DEFAULTS = {
-  economy: {
-    baggage_included_kg: '23',
-    carry_on_kg: '7',
-    extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' },
-  },
-  business: {
-    baggage_included_kg: '32',
-    carry_on_kg: '12',
-    extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' },
-  },
-  first: {
-    baggage_included_kg: '40',
-    carry_on_kg: '15',
-    extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' },
-  },
+  economy: { baggage_included_kg: '23', carry_on_kg: '7', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  business: { baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  first: { baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
 }
 
-const createSeat = (seatClass = 'economy') => ({
-  class: seatClass,
-  total_seats: '',
-  base_price: '',
-  ...SEAT_DEFAULTS[seatClass],
-})
+// ─── Airline / Route validation ───────────────────────────────────────────────
 
-const normalizeBaggageOptions = (options, legacyExtraBaggagePrice = 0) => {
-  const fallbackPricePerKg = Number(legacyExtraBaggagePrice || 0)
+const VN_AIRPORTS = new Set([
+  'SGN','HAN','DAD','HPH','CXR','VCA','PQC','VDH','HUI','BMV',
+  'DLI','UIH','TBB','CAH','VKG','VII','VCS','VCL','DIN','THD','PXU',
+])
+const VN_DOMESTIC_AIRLINES = ['VN','VJ','QH','BL','VU']
+const FOREIGN_NO_DOMESTIC = new Set([
+  'AA','UA','DL','BA','LH','AF','KL','QF','EK','EY','QR','TK',
+  'SQ','CX','JL','NH','KE','OZ','TG','MH','AK','FD','TR','MU','CA','CZ','GA',
+])
 
+// Price multiplier relative to Vietnam Airlines economy = 1.0
+const AIRLINE_TIER = {
+  VN:1.00, QH:0.82, VJ:0.63, BL:0.58, VU:0.67,
+  TG:1.18, SQ:1.40, MH:1.05, TR:0.60, AK:0.55, FD:0.55,
+  OD:0.62, CX:1.42, KE:1.22, OZ:1.12, JL:1.28, NH:1.25,
+  AA:2.20, UA:2.20, DL:2.20, BA:1.90, LH:1.85, AF:1.80, KL:1.78, EK:1.60, TK:1.40,
+}
+const BASE_ECO_PER_MIN = 5000 // VND per flight-minute, VN Airlines baseline
+
+const tierInfo = (code) => {
+  const m = AIRLINE_TIER[String(code || '').toUpperCase()] ?? 1.0
+  if (m >= 1.3) return { label: 'Cao cấp', cls: 'badge-info' }
+  if (m >= 0.85) return { label: 'Trung cấp', cls: 'badge-warning' }
+  return { label: 'Giá rẻ', cls: 'badge-success' }
+}
+
+const calcPrices = (durationMins, airlineCode) => {
+  const mins = Number(durationMins) || 0
+  if (!mins || !airlineCode) return null
+  const mult = AIRLINE_TIER[String(airlineCode).toUpperCase()] ?? 1.0
+  const eco = Math.round(mins * BASE_ECO_PER_MIN * mult / 10000) * 10000
+  return { economy: eco, business: Math.round(eco * 2.8 / 10000) * 10000, first: Math.round(eco * 5.5 / 10000) * 10000 }
+}
+
+const getRouteWarning = (airlineCode, depCode, arrCode) => {
+  if (!airlineCode || !depCode || !arrCode) return null
+  const code = String(airlineCode).toUpperCase()
+  if (VN_AIRPORTS.has(depCode.toUpperCase()) && VN_AIRPORTS.has(arrCode.toUpperCase())) {
+    if (FOREIGN_NO_DOMESTIC.has(code))
+      return `Hãng ${airlineCode} không khai thác nội địa Việt Nam — đề xuất: ${VN_DOMESTIC_AIRLINES.join(', ')}`
+    if (!VN_DOMESTIC_AIRLINES.includes(code))
+      return `Hãng ${airlineCode} thường không khai thác nội địa Việt Nam — kiểm tra lại`
+  }
+  return null
+}
+
+const autoGenFlightNum = (airlineCode, existingFlights) => {
+  if (!airlineCode) return ''
+  const code = String(airlineCode).toUpperCase()
+  const used = new Set(
+    existingFlights
+      .filter(f => f.status !== 'completed' && String(f.flight_number || '').startsWith(code))
+      .map(f => parseInt(String(f.flight_number || '').slice(code.length), 10))
+      .filter(n => !isNaN(n) && n >= 100 && n <= 999)
+  )
+  for (let i = 100; i <= 999; i++) if (!used.has(i)) return `${code}${i}`
+  return `${code}${100 + (Date.now() % 900)}`
+}
+
+const nowLocalISO = () => {
+  const d = new Date()
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+const addMinsToISO = (isoStr, mins) => {
+  if (!isoStr || !mins) return ''
+  const d = new Date(isoStr)
+  if (isNaN(d.getTime())) return ''
+  d.setMinutes(d.getMinutes() + Number(mins))
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+// ─── Seat helpers ─────────────────────────────────────────────────────────────
+
+const normalizeBaggageOptions = (options, legacyPrice = 0) => {
+  const fb = Number(legacyPrice || 0)
   return {
     0: '0',
-    5: String(options?.[5] ?? options?.['5'] ?? (fallbackPricePerKg * 5)),
-    10: String(options?.[10] ?? options?.['10'] ?? (fallbackPricePerKg * 10)),
-    20: String(options?.[20] ?? options?.['20'] ?? (fallbackPricePerKg * 20)),
+    5: String(options?.[5] ?? options?.['5'] ?? fb * 5),
+    10: String(options?.[10] ?? options?.['10'] ?? fb * 10),
+    20: String(options?.[20] ?? options?.['20'] ?? fb * 20),
   }
 }
 
 const normalizeSeatForForm = (seat = {}) => {
-  const seatClass = seat.class || 'economy'
-  const defaults = SEAT_DEFAULTS[seatClass] || SEAT_DEFAULTS.economy
-
+  const cls = seat.class || 'economy'
+  const def = SEAT_DEFAULTS[cls] || SEAT_DEFAULTS.economy
   return {
-    class: seatClass,
+    class: cls,
     total_seats: seat.total_seats ?? '',
     base_price: seat.base_price ?? '',
-    baggage_included_kg: seat.baggage_included_kg ?? defaults.baggage_included_kg,
-    carry_on_kg: seat.carry_on_kg ?? defaults.carry_on_kg,
-    extra_baggage_options: normalizeBaggageOptions(
-      seat.extra_baggage_options ?? defaults.extra_baggage_options,
-      seat.extra_baggage_price
-    ),
+    baggage_included_kg: seat.baggage_included_kg ?? def.baggage_included_kg,
+    carry_on_kg: seat.carry_on_kg ?? def.carry_on_kg,
+    extra_baggage_options: normalizeBaggageOptions(seat.extra_baggage_options ?? def.extra_baggage_options, seat.extra_baggage_price),
   }
 }
 
+const createSeat = (seatClass = 'economy') => ({ class: seatClass, total_seats: '', base_price: '', ...SEAT_DEFAULTS[seatClass] })
+
 const buildSeatFormList = (seats = []) => {
-  const seatMap = new Map((Array.isArray(seats) ? seats : []).map((seat) => [seat.class, seat]))
-  return SEAT_CLASS_ORDER.map((seatClass) => normalizeSeatForForm(seatMap.get(seatClass) || createSeat(seatClass)))
+  const map = new Map((Array.isArray(seats) ? seats : []).map(s => [s.class, s]))
+  return SEAT_CLASS_ORDER.map(cls => normalizeSeatForForm(map.get(cls) || createSeat(cls)))
 }
 
-const matchesFlightSearch = (flight, keyword) => {
-  const q = keyword.toLowerCase()
-  return [
-    flight.flight_number,
-    flight.airline_name,
-    flight.airline_code,
-    flight.departure_code,
-    flight.arrival_code,
-    flight.dep_code,
-    flight.arr_code,
-    flight.from_city,
-    flight.to_city,
-    flight.departure_city,
-    flight.arrival_city,
-  ].some((value) => String(value || '').toLowerCase().includes(q))
+// ─── Flight list helpers ───────────────────────────────────────────────────────
+
+const matchesFlightSearch = (f, q) =>
+  [f.flight_number, f.airline_name, f.airline_code, f.departure_code, f.arrival_code, f.dep_code, f.arr_code, f.from_city, f.to_city, f.departure_city, f.arrival_city]
+    .some(v => String(v || '').toLowerCase().includes(q))
+
+const getFlightDateValue = (v) => {
+  if (!v) return NaN
+  const t = new Date(String(v).replace(' ', 'T')).getTime()
+  return isNaN(t) ? NaN : t
 }
 
-const getFlightDateValue = (value) => {
-  if (!value) return Number.NaN
-  const normalized = String(value).replace(' ', 'T')
-  const time = new Date(normalized).getTime()
-  return Number.isNaN(time) ? Number.NaN : time
+const getFlightDateOnly = (v) => {
+  if (!v) return ''
+  const m = String(v).match(/(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : ''
 }
 
-const getFlightDateOnly = (value) => {
-  if (!value) return ''
-  const match = String(value).match(/(\d{4}-\d{2}-\d{2})/)
-  return match ? match[1] : ''
-}
-
-const sortFlightsByDepartureTime = (items, sortDirection) => {
-  return [...items].sort((a, b) => {
-    const timeA = getFlightDateValue(a?.departure_time)
-    const timeB = getFlightDateValue(b?.departure_time)
-    const missingA = Number.isNaN(timeA)
-    const missingB = Number.isNaN(timeB)
-
-    if (missingA && missingB) return 0
-    if (missingA) return 1
-    if (missingB) return -1
-
-    if (sortDirection === 'desc') return timeB - timeA
-    return timeA - timeB
+const sortFlights = (items, dir) =>
+  [...items].sort((a, b) => {
+    const ta = getFlightDateValue(a?.departure_time)
+    const tb = getFlightDateValue(b?.departure_time)
+    if (isNaN(ta) && isNaN(tb)) return 0
+    if (isNaN(ta)) return 1
+    if (isNaN(tb)) return -1
+    return dir === 'desc' ? tb - ta : ta - tb
   })
-}
 
 const STATUS_LABELS = {
   scheduled: { label: 'Đã lên lịch', cls: 'badge-info' },
@@ -130,27 +166,18 @@ const STATUS_LABELS = {
 }
 const FLIGHT_STATUSES = ['scheduled', 'delayed', 'cancelled', 'completed']
 
-// Extract date & time directly from string to avoid UTC -> local timezone shift
 const formatRawDateTime = (iso) => {
   if (!iso) return '—'
   const s = String(iso)
-  const dateMatch = s.match(/(\d{4})-(\d{2})-(\d{2})/)
-  const timeMatch = s.match(/[T ](\d{2}):(\d{2})/)
-  if (!dateMatch) return s
-  const [, y, m, d] = dateMatch
-  const time = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : ''
-  return time ? `${d}/${m}/${y} ${time}` : `${d}/${m}/${y}`
+  const dm = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  const tm = s.match(/[T ](\d{2}):(\d{2})/)
+  if (!dm) return s
+  return tm ? `${dm[3]}/${dm[2]}/${dm[1]} ${tm[1]}:${tm[2]}` : `${dm[3]}/${dm[2]}/${dm[1]}`
 }
 
 const createEmptyFlight = () => ({
-  flight_number: '',
-  airline_id: '',
-  departure_airport_id: '',
-  arrival_airport_id: '',
-  departure_time: '',
-  arrival_time: '',
-  duration_minutes: '',
-  seats: buildSeatFormList(),
+  flight_number: '', airline_id: '', departure_airport_id: '', arrival_airport_id: '',
+  departure_time: '', arrival_time: '', duration_minutes: '', seats: buildSeatFormList(),
 })
 
 const buildFlightPayload = (form) => ({
@@ -161,22 +188,123 @@ const buildFlightPayload = (form) => ({
   departure_time: form.departure_time || '',
   arrival_time: form.arrival_time || '',
   duration_minutes: form.duration_minutes || '',
-  seats: Array.isArray(form.seats)
-    ? form.seats.map((seat) => ({
-        class: seat.class,
-        total_seats: seat.total_seats,
-        base_price: seat.base_price,
-        baggage_included_kg: seat.baggage_included_kg,
-        carry_on_kg: seat.carry_on_kg,
-        extra_baggage_options: {
-          0: 0,
-          5: Number(seat.extra_baggage_options?.[5] ?? seat.extra_baggage_options?.['5'] ?? 0),
-          10: Number(seat.extra_baggage_options?.[10] ?? seat.extra_baggage_options?.['10'] ?? 0),
-          20: Number(seat.extra_baggage_options?.[20] ?? seat.extra_baggage_options?.['20'] ?? 0),
-        },
-      }))
-    : [],
+  seats: Array.isArray(form.seats) ? form.seats.map(s => ({
+    class: s.class, total_seats: s.total_seats, base_price: s.base_price,
+    baggage_included_kg: s.baggage_included_kg, carry_on_kg: s.carry_on_kg,
+    extra_baggage_options: { 0: 0, 5: Number(s.extra_baggage_options?.[5] ?? 0), 10: Number(s.extra_baggage_options?.[10] ?? 0), 20: Number(s.extra_baggage_options?.[20] ?? 0) },
+  })) : [],
 })
+
+// ─── PriceCalcPanel ───────────────────────────────────────────────────────────
+
+function PriceCalcPanel({ airports, airlines, onClose }) {
+  const [depId, setDepId] = useState('')
+  const [arrId, setArrId] = useState('')
+  const [durH, setDurH] = useState('')
+  const [durM, setDurM] = useState('')
+
+  const dep = airports.find(a => String(a.id) === String(depId))
+  const arr = airports.find(a => String(a.id) === String(arrId))
+  const depCode = (dep?.code || '').toUpperCase()
+  const arrCode = (arr?.code || '').toUpperCase()
+  const totalMins = Number(durH || 0) * 60 + Number(durM || 0)
+  const isDomestic = depCode && arrCode && VN_AIRPORTS.has(depCode) && VN_AIRPORTS.has(arrCode)
+
+  const relevantAirlines = airlines
+    .filter(a => {
+      if (!depCode || !arrCode) return true
+      const code = (a.code || '').toUpperCase()
+      return isDomestic ? VN_DOMESTIC_AIRLINES.includes(code) : true
+    })
+    .sort((a, b) => {
+      const ma = AIRLINE_TIER[(a.code || '').toUpperCase()] ?? 1.0
+      const mb = AIRLINE_TIER[(b.code || '').toUpperCase()] ?? 1.0
+      return mb - ma
+    })
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 740 }}>
+        <div className="modal-header">
+          <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <LuCalculator size={16}/> Công cụ tính giá tham khảo theo hãng
+          </div>
+          <button className="modal-close" onClick={onClose}><LuX size={18}/></button>
+        </div>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">Sân bay đi</label>
+            <select className="form-control" value={depId} onChange={e => setDepId(e.target.value)}>
+              <option value="">-- Chọn --</option>
+              {airports.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Sân bay đến</label>
+            <select className="form-control" value={arrId} onChange={e => setArrId(e.target.value)}>
+              <option value="">-- Chọn --</option>
+              {airports.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+            </select>
+          </div>
+          <div className="form-group full">
+            <label className="form-label">Thời gian bay ước tính</label>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <input className="form-control" type="number" min="0" max="24" value={durH} onChange={e => setDurH(e.target.value)} placeholder="1" style={{ width:80 }} />
+              <span style={{ fontSize:13, color:'var(--text-secondary)', whiteSpace:'nowrap' }}>giờ</span>
+              <input className="form-control" type="number" min="0" max="59" value={durM} onChange={e => setDurM(e.target.value)} placeholder="30" style={{ width:80 }} />
+              <span style={{ fontSize:13, color:'var(--text-secondary)', whiteSpace:'nowrap' }}>phút</span>
+              {totalMins > 0 && <span style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>= {totalMins} phút tổng</span>}
+            </div>
+          </div>
+        </div>
+
+        {totalMins > 0 && relevantAirlines.length > 0 ? (
+          <div style={{ marginTop:16, overflowX:'auto' }}>
+            <table style={{ width:'100%', fontSize:13, borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ background:'var(--bg-input)' }}>
+                  <th style={{ textAlign:'left', padding:'8px 10px', fontWeight:500 }}>Hãng bay</th>
+                  <th style={{ textAlign:'right', padding:'8px 10px', fontWeight:500 }}>Economy</th>
+                  <th style={{ textAlign:'right', padding:'8px 10px', fontWeight:500 }}>Business</th>
+                  <th style={{ textAlign:'right', padding:'8px 10px', fontWeight:500 }}>First Class</th>
+                  <th style={{ textAlign:'center', padding:'8px 10px', fontWeight:500 }}>Phân khúc</th>
+                </tr>
+              </thead>
+              <tbody>
+                {relevantAirlines.map(a => {
+                  const prices = calcPrices(totalMins, a.code)
+                  if (!prices) return null
+                  const { label, cls } = tierInfo(a.code)
+                  return (
+                    <tr key={a.id} style={{ borderTop:'1px solid var(--border)' }}>
+                      <td style={{ padding:'7px 10px', fontWeight:500 }}>
+                        {a.name} <span style={{ color:'var(--text-muted)', fontSize:11 }}>({a.code})</span>
+                      </td>
+                      <td style={{ padding:'7px 10px', textAlign:'right' }}>{fmtPrice(prices.economy)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right' }}>{fmtPrice(prices.business)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'right' }}>{fmtPrice(prices.first)}</td>
+                      <td style={{ padding:'7px 10px', textAlign:'center' }}><span className={`badge ${cls}`}>{label}</span></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:8, padding:'0 2px' }}>
+              * Giá tham khảo ước tính — VJ/BL là LCC (giá rẻ), VN/SQ là hãng truyền thống (full-service). Không phải giá chính thức.
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text-muted)', fontSize:13 }}>
+            {totalMins === 0 ? 'Nhập thời gian bay để xem giá tham khảo' : 'Chọn sân bay để lọc hãng phù hợp'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FlightsPage() {
   const [flights, setFlights] = useState([])
@@ -196,6 +324,8 @@ export default function FlightsPage() {
   const [error, setError] = useState('')
   const [airports, setAirports] = useState([])
   const [airlines, setAirlines] = useState([])
+  const [priceCalcOpen, setPriceCalcOpen] = useState(false)
+const [flightNumAuto, setFlightNumAuto] = useState(true)
   const requestIdRef = useRef(0)
   const saveLockRef = useRef(false)
   const debouncedSearch = useDebouncedValue(search)
@@ -204,45 +334,32 @@ export default function FlightsPage() {
     const requestId = ++requestIdRef.current
     const keyword = debouncedSearch.trim()
     const searching = keyword.length > 0
-    const filteringByDepartureDate = Boolean(departureDateFilter)
+    const filteringDate = Boolean(departureDateFilter)
     const sorting = Boolean(sortDirection)
-    const useClientPipeline = searching || filteringByDepartureDate || sorting
+    const useClient = searching || filteringDate || sorting
 
     setLoading(true)
     getFlights({
-      page: useClientPipeline ? 1 : page,
-      limit: useClientPipeline ? SEARCH_FETCH_LIMIT : limit,
+      page: useClient ? 1 : page,
+      limit: useClient ? SEARCH_FETCH_LIMIT : limit,
       status: filterStatus || undefined,
       show_hidden: showHidden ? true : undefined,
     })
-      .then((r) => {
+      .then(r => {
         if (requestId !== requestIdRef.current) return
-
         const d = r.data
-        const items = d.data || []
+        let items = d.data || []
 
-        if (useClientPipeline) {
-          let processedItems = items
+        if (useClient) {
+          if (searching) items = items.filter(f => matchesFlightSearch(f, keyword.toLowerCase()))
+          if (filteringDate) items = items.filter(f => getFlightDateOnly(f.departure_time) === departureDateFilter)
+          if (sorting) items = sortFlights(items, sortDirection)
 
-          if (searching) {
-            processedItems = processedItems.filter((item) => matchesFlightSearch(item, keyword))
-          }
-
-          if (filteringByDepartureDate) {
-            processedItems = processedItems.filter((item) => getFlightDateOnly(item.departure_time) === departureDateFilter)
-          }
-
-          if (sorting) {
-            processedItems = sortFlightsByDepartureTime(processedItems, sortDirection)
-          }
-
-          const total = processedItems.length
+          const total = items.length
           const totalPages = Math.max(1, Math.ceil(total / limit))
           const safePage = Math.min(page, totalPages)
-
-          setFlights(processedItems.slice((safePage - 1) * limit, safePage * limit))
+          setFlights(items.slice((safePage - 1) * limit, safePage * limit))
           setPagination({ total, total_pages: totalPages, page: safePage })
-
           if (safePage !== page) setPage(safePage)
           return
         }
@@ -250,26 +367,20 @@ export default function FlightsPage() {
         setFlights(items)
         setPagination(d.pagination || { total: 0, total_pages: 1, page: 1 })
       })
-      .catch(() => {
-        if (requestId !== requestIdRef.current) return
-      })
-      .finally(() => {
-        if (requestId === requestIdRef.current) setLoading(false)
-      })
+      .catch(() => { if (requestId !== requestIdRef.current) return })
+      .finally(() => { if (requestId === requestIdRef.current) setLoading(false) })
   }, [page, limit, debouncedSearch, filterStatus, showHidden, departureDateFilter, sortDirection])
 
+  useEffect(() => { load() }, [load])
   useEffect(() => {
-    load()
-  }, [load])
-
-  useEffect(() => {
-    getAirports({ limit: 200 }).then((r) => setAirports(r.data.data || [])).catch(() => {})
-    getAirlines({ limit: 100 }).then((r) => setAirlines(r.data.data || [])).catch(() => {})
+    getAirports({ limit: 200 }).then(r => setAirports(r.data.data || [])).catch(() => {})
+    getAirlines({ limit: 100 }).then(r => setAirlines(r.data.data || [])).catch(() => {})
   }, [])
 
   const openCreate = () => {
     setForm(createEmptyFlight())
     setError('')
+    setFlightNumAuto(true)
     setModal('create')
     setEditData(null)
   }
@@ -287,14 +398,26 @@ export default function FlightsPage() {
       seats: buildSeatFormList(flight.seats),
     })
     setError('')
+    setFlightNumAuto(false)
     setModal('edit')
+  }
+
+  const handleAirlineChange = (airlineId) => {
+    setField('airline_id', airlineId)
+    if (modal === 'create' && flightNumAuto) {
+      const airline = airlines.find(a => String(a.id) === String(airlineId))
+      if (airline?.code) {
+        setField('flight_number', autoGenFlightNum(airline.code, flights))
+      } else {
+        setField('flight_number', '')
+      }
+    }
   }
 
   const SEAT_MAX = { economy: 200, business: 80, first: 20 }
 
   const handleSave = async () => {
     if (saveLockRef.current) return
-
     for (const seat of form.seats) {
       const n = Number(seat.total_seats)
       const max = SEAT_MAX[seat.class]
@@ -303,83 +426,91 @@ export default function FlightsPage() {
         return
       }
     }
-
     saveLockRef.current = true
     setSaving(true)
     setError('')
-
-    const payload = buildFlightPayload(form)
-
     try {
+      const payload = buildFlightPayload(form)
       if (modal === 'create') await createFlight(payload)
       else await updateFlight(editData.id, payload)
       setModal(null)
       load()
     } catch (e) {
-      const backendError = e.response?.data?.error || ''
-      if (backendError.includes('flights_pkey')) {
-        setError('Backend đang bị trùng ID tự động của bảng flights, không phải trùng số hiệu bay.')
-      } else {
-        setError(backendError || 'Lỗi khi lưu')
-      }
+      const be = e.response?.data?.error || ''
+      if (be.includes('flights_pkey')) setError('Backend trùng ID tự động của bảng flights, không phải trùng số hiệu bay.')
+      else setError(be || 'Lỗi khi lưu')
     } finally {
       saveLockRef.current = false
       setSaving(false)
     }
   }
 
-  const handleStatus = async (id, statusValue) => {
-    try {
-      await updateFlightStatus(id, statusValue)
-      load()
-    } catch (e) {
-      alert(e.response?.data?.error || 'Lỗi')
-    }
+  const handleStatus = async (id, status) => {
+    try { await updateFlightStatus(id, status); load() }
+    catch (e) { alert(e.response?.data?.error || 'Lỗi') }
   }
 
   const handleVisibility = async (id) => {
-    try {
-      await toggleFlightVisibility(id)
-      load()
-    } catch (e) {
-      alert(e.response?.data?.error || 'Lỗi')
-    }
+    try { await toggleFlightVisibility(id); load() }
+    catch (e) { alert(e.response?.data?.error || 'Lỗi') }
   }
 
-  const setField = (key, value) => setForm((p) => ({ ...p, [key]: value }))
-  const setSeatField = (index, key, value) =>
-    setForm((p) => ({
-      ...p,
-      seats: p.seats.map((seat, seatIndex) => (seatIndex === index ? { ...seat, [key]: value } : seat)),
-    }))
-  const setSeatBaggageOption = (index, kg, value) =>
-    setForm((p) => ({
-      ...p,
-      seats: p.seats.map((seat, seatIndex) => (
-        seatIndex === index
-          ? {
-              ...seat,
-              extra_baggage_options: {
-                ...seat.extra_baggage_options,
-                [kg]: value,
-              },
-            }
-          : seat
-      )),
-    }))
+  const setField = (key, value) => setForm(p => ({ ...p, [key]: value }))
+  const setSeatField = (idx, key, value) =>
+    setForm(p => ({ ...p, seats: p.seats.map((s, i) => i === idx ? { ...s, [key]: value } : s) }))
+  const setSeatBaggageOption = (idx, kg, value) =>
+    setForm(p => ({ ...p, seats: p.seats.map((s, i) => i === idx ? { ...s, extra_baggage_options: { ...s.extra_baggage_options, [kg]: value } } : s) }))
 
-  const clearFilters = () => {
-    setDepartureDateFilter('')
-    setSortDirection('')
-    setPage(1)
-  }
+  const clearFilters = () => { setDepartureDateFilter(''); setSortDirection(''); setPage(1) }
 
   const { total, total_pages } = pagination
-
   const pageButtons = () => {
     if (total_pages <= 7) return Array.from({ length: total_pages }, (_, i) => i + 1)
     const start = Math.max(1, Math.min(page - 3, total_pages - 6))
     return Array.from({ length: Math.min(7, total_pages) }, (_, i) => start + i)
+  }
+
+  // ─── Derived form values ─────────────────────────────────────────────────────
+  const selectedAirline = airlines.find(a => String(a.id) === String(form.airline_id))
+  const selectedAirlineCode = selectedAirline?.code || ''
+  const depAirport = airports.find(a => String(a.id) === String(form.departure_airport_id))
+  const arrAirport = airports.find(a => String(a.id) === String(form.arrival_airport_id))
+  const depCode = depAirport?.code || ''
+  const arrCode = arrAirport?.code || ''
+  const routeWarning = getRouteWarning(selectedAirlineCode, depCode, arrCode)
+  const priceSuggestion = calcPrices(form.duration_minutes, selectedAirlineCode)
+
+  const durTotal = Number(form.duration_minutes) || 0
+  const durH = form.duration_minutes !== '' ? Math.floor(durTotal / 60) : ''
+  const durM = form.duration_minutes !== '' ? durTotal % 60 : ''
+  const setDurH = (val) => {
+    const h = Math.max(0, Number(val) || 0)
+    const m = form.duration_minutes !== '' ? durTotal % 60 : 0
+    setField('duration_minutes', String(h * 60 + m))
+  }
+  const setDurM = (val) => {
+    const h = form.duration_minutes !== '' ? Math.floor(durTotal / 60) : 0
+    const m = Math.max(0, Number(val) || 0)
+    setField('duration_minutes', String(h * 60 + m))
+  }
+
+  const handleSetNow = () => {
+    const now = nowLocalISO()
+    setField('departure_time', now)
+    if (form.duration_minutes) setField('arrival_time', addMinsToISO(now, form.duration_minutes))
+  }
+
+  const handleAutoArrival = () => {
+    if (form.departure_time && form.duration_minutes)
+      setField('arrival_time', addMinsToISO(form.departure_time, form.duration_minutes))
+  }
+
+  const handleApplyPrices = () => {
+    if (!priceSuggestion) return
+    setForm(p => ({
+      ...p,
+      seats: p.seats.map(s => ({ ...s, base_price: String(priceSuggestion[s.class] ?? s.base_price) }))
+    }))
   }
 
   return (
@@ -390,6 +521,12 @@ export default function FlightsPage() {
           <div className="page-subtitle">{total} chuyến bay trong hệ thống</div>
         </div>
         <div className="header-right">
+          <button className="btn btn-secondary" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => setPriceCalcOpen(true)}>
+            <LuCalculator size={14}/> Tính giá
+          </button>
+          <Link to="/schedules" className="btn btn-secondary" style={{ display:'flex', alignItems:'center', gap:5 }}>
+            <LuCalendarDays size={14}/> Lịch bay
+          </Link>
           <button className="btn btn-primary" onClick={openCreate}>+ Thêm chuyến bay</button>
         </div>
       </div>
@@ -398,37 +535,20 @@ export default function FlightsPage() {
         <div className="toolbar">
           <div className="search-box">
             <span className="search-icon"><LuSearch size={16}/></span>
-            <input
-              placeholder="Tìm số hiệu bay..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            />
+            <input placeholder="Tìm số hiệu bay..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           </div>
-          <select className="filter-select" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1) }}>
+          <select className="filter-select" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }}>
             <option value="">Tất cả trạng thái</option>
-            {FLIGHT_STATUSES.map((statusValue) => (
-              <option key={statusValue} value={statusValue}>{STATUS_LABELS[statusValue]?.label}</option>
-            ))}
+            {FLIGHT_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]?.label}</option>)}
           </select>
-          <select className="filter-select" value={sortDirection} onChange={(e) => { setSortDirection(e.target.value); setPage(1) }}>
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
+          <select className="filter-select" value={sortDirection} onChange={e => { setSortDirection(e.target.value); setPage(1) }}>
+            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <input
-            className="filter-select"
-            type="date"
-            value={departureDateFilter}
-            onChange={(e) => { setDepartureDateFilter(e.target.value); setPage(1) }}
-            title="Ngày khởi hành"
-          />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={showHidden} onChange={(e) => { setShowHidden(e.target.checked); setPage(1) }} />
+          <input className="filter-select" type="date" value={departureDateFilter} onChange={e => { setDepartureDateFilter(e.target.value); setPage(1) }} title="Ngày khởi hành" />
+          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, cursor:'pointer', color:'var(--text-secondary)' }}>
+            <input type="checkbox" checked={showHidden} onChange={e => { setShowHidden(e.target.checked); setPage(1) }} />
             Hiện cả vé ẩn
           </label>
-          <select className="filter-select" value={limit} style={{ width: 80 }} onChange={() => {}}>
-            <option value={15}>15/trang</option>
-          </select>
           <button className="btn btn-secondary btn-sm" onClick={clearFilters}>Xoá lọc</button>
           <button className="btn btn-secondary btn-sm ml-auto" onClick={load}>Làm mới</button>
         </div>
@@ -443,72 +563,57 @@ export default function FlightsPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Số hiệu</th>
-                    <th>Hãng</th>
-                    <th>Tuyến đường</th>
-                    <th>Khởi hành</th>
-                    <th>Đến nơi</th>
-                    <th>Thời gian</th>
+                    <th>Số hiệu</th><th>Hãng</th><th>Tuyến đường</th>
+                    <th>Khởi hành</th><th>Đến nơi</th><th>Thời gian</th>
                     <th>Giá (Economy / Business / First)</th>
-                    <th>Trạng thái</th>
-                    <th>Hiển thị</th>
-                    <th>Hành động</th>
+                    <th>Trạng thái</th><th>Hiển thị</th><th>Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {flights.map((flight) => (
-                    <tr key={flight.id}>
-                      <td><span className="td-mono">{flight.flight_number}</span></td>
-                      <td style={{ fontSize: 13 }}>{flight.airline_name || flight.airline_code || '—'}</td>
+                  {flights.map(f => (
+                    <tr key={f.id}>
+                      <td><span className="td-mono">{f.flight_number}</span></td>
+                      <td style={{ fontSize:13 }}>{f.airline_name || f.airline_code || '—'}</td>
                       <td>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>
-                          {flight.departure_code || flight.dep_code || '?'} → {flight.arrival_code || flight.arr_code || '?'}
+                        <span style={{ fontSize:13, fontWeight:500 }}>
+                          {f.departure_code || f.dep_code || '?'} → {f.arrival_code || f.arr_code || '?'}
                         </span>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {flight.from_city || flight.departure_city || ''} → {flight.to_city || flight.arrival_city || ''}
+                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>
+                          {f.from_city || f.departure_city || ''} → {f.to_city || f.arrival_city || ''}
                         </div>
                       </td>
-                      <td style={{ fontSize: 12 }}>{flight.departure_time ? formatRawDateTime(flight.departure_time) : '—'}</td>
-                      <td style={{ fontSize: 12 }}>{flight.arrival_time ? formatRawDateTime(flight.arrival_time) : '—'}</td>
-                      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {flight.duration_minutes ? `${Math.floor(flight.duration_minutes / 60)}h${flight.duration_minutes % 60 ? `${flight.duration_minutes % 60}m` : ''}` : '—'}
+                      <td style={{ fontSize:12 }}>{f.departure_time ? formatRawDateTime(f.departure_time) : '—'}</td>
+                      <td style={{ fontSize:12 }}>{f.arrival_time ? formatRawDateTime(f.arrival_time) : '—'}</td>
+                      <td style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                        {f.duration_minutes
+                          ? `${Math.floor(f.duration_minutes/60)}h${f.duration_minutes%60 ? `${f.duration_minutes%60}m` : ''}`
+                          : '—'}
                       </td>
-                      <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+                      <td style={{ fontSize:11, whiteSpace:'nowrap' }}>
                         {['economy','business','first'].map(cls => {
-                          const s = (flight.seats || []).find(s => s.class === cls)
-                          return s ? <div key={cls}><span style={{ color: 'var(--text-muted)', textTransform: 'capitalize' }}>{cls}: </span>{fmtPrice(s.base_price)}</div> : null
+                          const s = (f.seats || []).find(x => x.class === cls)
+                          return s ? <div key={cls}><span style={{ color:'var(--text-muted)', textTransform:'capitalize' }}>{cls}: </span>{fmtPrice(s.base_price)}</div> : null
                         })}
                       </td>
                       <td>
-                        <select
-                          className="filter-select"
-                          style={{ padding: '4px 8px', fontSize: 12 }}
-                          value={flight.status}
-                          onChange={(e) => handleStatus(flight.id, e.target.value)}
-                        >
-                          {FLIGHT_STATUSES.map((statusValue) => (
-                            <option key={statusValue} value={statusValue}>{STATUS_LABELS[statusValue]?.label}</option>
-                          ))}
+                        <select className="filter-select" style={{ padding:'4px 8px', fontSize:12 }} value={f.status} onChange={e => handleStatus(f.id, e.target.value)}>
+                          {FLIGHT_STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]?.label}</option>)}
                         </select>
                       </td>
                       <td>
-                        <span className={`badge ${flight.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
-                          {flight.is_active !== false ? <><LuEye size={13}/> Hien</> : <><LuBan size={13}/> An</>}
+                        <span className={`badge ${f.is_active !== false ? 'badge-success' : 'badge-danger'}`}>
+                          {f.is_active !== false ? <><LuEye size={13}/> Hiện</> : <><LuBan size={13}/> Ẩn</>}
                         </span>
                       </td>
                       <td>
                         <div className="action-btns">
-                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(flight)}><LuPencil size={14}/></button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => openEdit(f)}><LuPencil size={14}/></button>
                           <button
                             className="btn btn-sm"
-                            style={{
-                              background: flight.is_active !== false ? 'var(--warning-bg)' : 'var(--success-bg)',
-                              color: flight.is_active !== false ? 'var(--warning)' : 'var(--success)',
-                              border: '1px solid currentColor',
-                            }}
-                            onClick={() => handleVisibility(flight.id)}
+                            style={{ background: f.is_active !== false ? 'var(--warning-bg)' : 'var(--success-bg)', color: f.is_active !== false ? 'var(--warning)' : 'var(--success)', border:'1px solid currentColor' }}
+                            onClick={() => handleVisibility(f.id)}
                           >
-                            {flight.is_active !== false ? <LuBan size={14}/> : <LuEye size={14}/>}
+                            {f.is_active !== false ? <LuBan size={14}/> : <LuEye size={14}/>}
                           </button>
                         </div>
                       </td>
@@ -517,123 +622,236 @@ export default function FlightsPage() {
                 </tbody>
               </table>
             </div>
-
             <div className="pagination">
-              <div className="pagination-info">
-                Trang {page} / {total_pages} · Tổng {total} chuyến bay
-              </div>
+              <div className="pagination-info">Trang {page} / {total_pages} · Tổng {total} chuyến bay</div>
               <div className="pagination-btns">
-                <button className="page-btn" disabled={page === 1} onClick={() => setPage(1)}>«</button>
-                <button className="page-btn" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>‹</button>
-                {pageButtons().map((pageValue) => (
-                  <button key={pageValue} className={`page-btn${pageValue === page ? ' active' : ''}`} onClick={() => setPage(pageValue)}>{pageValue}</button>
-                ))}
-                <button className="page-btn" disabled={page >= total_pages} onClick={() => setPage((p) => p + 1)}>›</button>
-                <button className="page-btn" disabled={page >= total_pages} onClick={() => setPage(total_pages)}>»</button>
+                <button className="page-btn" disabled={page===1} onClick={() => setPage(1)}>«</button>
+                <button className="page-btn" disabled={page===1} onClick={() => setPage(p => p-1)}>‹</button>
+                {pageButtons().map(p => <button key={p} className={`page-btn${p===page?' active':''}`} onClick={() => setPage(p)}>{p}</button>)}
+                <button className="page-btn" disabled={page>=total_pages} onClick={() => setPage(p => p+1)}>›</button>
+                <button className="page-btn" disabled={page>=total_pages} onClick={() => setPage(total_pages)}>»</button>
               </div>
             </div>
           </>
         )}
       </div>
 
+      {/* ─── Create / Edit Modal ─────────────────────────────────────── */}
       {modal && (
-        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setModal(null)}>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
           <div className="modal">
             <div className="modal-header">
-              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>{modal === 'create' ? '+ Thêm chuyến bay' : <><LuPencil size={15}/> Cập nhật chuyến bay</>}</div>
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                {modal === 'create' ? '+ Thêm chuyến bay' : <><LuPencil size={15}/> Cập nhật chuyến bay</>}
+              </div>
               <button className="modal-close" onClick={() => setModal(null)}><LuX size={18}/></button>
             </div>
-            {error && <div className="alert alert-error" style={{ display:'flex', alignItems:'center', gap:6 }}><LuTriangleAlert size={15}/> {error}</div>}
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Số hiệu bay *</label>
-                <input className="form-control" value={form.flight_number} onChange={(e) => setField('flight_number', e.target.value)} placeholder="VN123" />
+
+            {error && (
+              <div className="alert alert-error" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <LuTriangleAlert size={15}/> {error}
               </div>
+            )}
+
+            {/* Route warning */}
+            {routeWarning && (
+              <div style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'10px 12px', margin:'0 0 8px', background:'var(--warning-bg)', border:'1px solid var(--warning)', borderRadius:6, fontSize:13 }}>
+                <LuTriangleAlert size={15} style={{ color:'var(--warning)', flexShrink:0, marginTop:1 }} />
+                <span style={{ color:'var(--warning)' }}>{routeWarning}</span>
+              </div>
+            )}
+
+            <div className="form-grid">
+              {/* Flight number */}
+              <div className="form-group">
+                <label className="form-label">
+                  Số hiệu bay *
+                  {modal === 'create' && (
+                    <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>
+                      {flightNumAuto ? '— tự động' : '— tùy chỉnh'}
+                    </span>
+                  )}
+                </label>
+                <div style={{ display:'flex', gap:6 }}>
+                  <input
+                    className="form-control"
+                    value={form.flight_number}
+                    onChange={e => setField('flight_number', e.target.value)}
+                    placeholder="VJ123"
+                    readOnly={modal === 'create' && flightNumAuto}
+                    style={modal === 'create' && flightNumAuto ? { background:'var(--bg-input)', color:'var(--text-secondary)', cursor:'default' } : {}}
+                  />
+                  {modal === 'create' && (
+                    flightNumAuto ? (
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ whiteSpace:'nowrap' }} onClick={() => setFlightNumAuto(false)}>
+                        Sửa
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-secondary btn-sm" title="Tự động sinh lại" onClick={() => {
+                        if (selectedAirlineCode) setField('flight_number', autoGenFlightNum(selectedAirlineCode, flights))
+                        setFlightNumAuto(true)
+                      }}>
+                        <LuRefreshCw size={13}/>
+                      </button>
+                    )
+                  )}
+                </div>
+                {modal === 'create' && flightNumAuto && !form.airline_id && (
+                  <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Chọn hãng bay để tự động sinh số hiệu</div>
+                )}
+              </div>
+
+              {/* Airline */}
               <div className="form-group">
                 <label className="form-label">Hãng bay *</label>
-                <select className="form-control" value={form.airline_id} onChange={(e) => setField('airline_id', e.target.value)}>
+                <select className="form-control" value={form.airline_id} onChange={e => handleAirlineChange(e.target.value)}>
                   <option value="">-- Chọn hãng --</option>
-                  {airlines.map((airline) => <option key={airline.id} value={airline.id}>{airline.name} ({airline.code})</option>)}
+                  {airlines.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
                 </select>
               </div>
+
+              {/* Departure airport */}
               <div className="form-group">
                 <label className="form-label">Sân bay đi *</label>
-                <select className="form-control" value={form.departure_airport_id} onChange={(e) => setField('departure_airport_id', e.target.value)}>
+                <select className="form-control" value={form.departure_airport_id} onChange={e => setField('departure_airport_id', e.target.value)}>
                   <option value="">-- Chọn sân bay --</option>
-                  {airports.map((airport) => <option key={airport.id} value={airport.id}>{airport.name} ({airport.code})</option>)}
+                  {airports.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
                 </select>
               </div>
+
+              {/* Arrival airport */}
               <div className="form-group">
                 <label className="form-label">Sân bay đến *</label>
-                <select className="form-control" value={form.arrival_airport_id} onChange={(e) => setField('arrival_airport_id', e.target.value)}>
+                <select className="form-control" value={form.arrival_airport_id} onChange={e => setField('arrival_airport_id', e.target.value)}>
                   <option value="">-- Chọn sân bay --</option>
-                  {airports.map((airport) => <option key={airport.id} value={airport.id}>{airport.name} ({airport.code})</option>)}
+                  {airports.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
                 </select>
               </div>
+
+              {/* Departure time */}
               <div className="form-group">
-                <label className="form-label">Giờ khởi hành * <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>(Giờ Việt Nam, ICT)</span></label>
-                <input className="form-control" type="datetime-local" value={form.departure_time} onChange={(e) => setField('departure_time', e.target.value)} />
+                <label className="form-label">Giờ khởi hành * <span style={{ fontWeight:400, color:'var(--text-muted)', fontSize:11 }}>(ICT)</span></label>
+                <div style={{ display:'flex', gap:6 }}>
+                  <input className="form-control" type="datetime-local" value={form.departure_time} onChange={e => setField('departure_time', e.target.value)} />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:4 }}
+                    onClick={handleSetNow}
+                    title="Đặt khởi hành ngay bây giờ (bỏ qua ràng buộc 24h)"
+                  >
+                    <LuZap size={13}/> Ngay
+                  </button>
+                </div>
               </div>
+
+              {/* Arrival time */}
               <div className="form-group">
-                <label className="form-label">Giờ đến * <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>(Giờ Việt Nam, ICT)</span></label>
-                <input className="form-control" type="datetime-local" value={form.arrival_time} onChange={(e) => setField('arrival_time', e.target.value)} />
+                <label className="form-label">Giờ đến * <span style={{ fontWeight:400, color:'var(--text-muted)', fontSize:11 }}>(ICT)</span></label>
+                <div style={{ display:'flex', gap:6 }}>
+                  <input className="form-control" type="datetime-local" value={form.arrival_time} onChange={e => setField('arrival_time', e.target.value)} />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ whiteSpace:'nowrap' }}
+                    disabled={!form.departure_time || !form.duration_minutes}
+                    onClick={handleAutoArrival}
+                    title="Tự động tính giờ đến = khởi hành + thời gian bay"
+                  >
+                    Tự tính
+                  </button>
+                </div>
               </div>
+
+              {/* Duration */}
               <div className="form-group full">
-                <label className="form-label">Thời gian bay (phút) *</label>
-                <input className="form-control" type="number" value={form.duration_minutes} onChange={(e) => setField('duration_minutes', e.target.value)} placeholder="90" />
+                <label className="form-label">Thời gian bay *</label>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  <input
+                    className="form-control"
+                    type="number" min="0" max="24"
+                    value={durH}
+                    onChange={e => setDurH(e.target.value)}
+                    placeholder="1"
+                    style={{ width:80 }}
+                  />
+                  <span style={{ fontSize:13, color:'var(--text-secondary)', whiteSpace:'nowrap' }}>giờ</span>
+                  <input
+                    className="form-control"
+                    type="number" min="0"
+                    value={durM}
+                    onChange={e => setDurM(e.target.value)}
+                    placeholder="30"
+                    style={{ width:80 }}
+                  />
+                  <span style={{ fontSize:13, color:'var(--text-secondary)', whiteSpace:'nowrap' }}>phút</span>
+                  {form.duration_minutes ? (
+                    <span style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>= {form.duration_minutes} phút tổng</span>
+                  ) : null}
+                </div>
+                <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>
+                  Có thể điền chỉ ô phút (ví dụ 90) hoặc kết hợp giờ + phút (1 giờ 30 phút)
+                </div>
               </div>
+
+              {/* Price suggestion bar */}
+              {priceSuggestion && (
+                <div className="form-group full">
+                  <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'var(--bg-input)', border:'1px solid var(--border)', borderRadius:6, fontSize:12, flexWrap:'wrap' }}>
+                    <span style={{ color:'var(--text-secondary)', whiteSpace:'nowrap' }}>Gợi ý giá ({selectedAirlineCode}) :</span>
+                    <span>Economy <strong>{fmtPrice(priceSuggestion.economy)}</strong></span>
+                    <span style={{ color:'var(--text-muted)' }}>·</span>
+                    <span>Business <strong>{fmtPrice(priceSuggestion.business)}</strong></span>
+                    <span style={{ color:'var(--text-muted)' }}>·</span>
+                    <span>First <strong>{fmtPrice(priceSuggestion.first)}</strong></span>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft:'auto' }} onClick={handleApplyPrices}>
+                      Áp dụng vào ghế
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Seats */}
               <div className="form-group full">
-                <div style={{ marginBottom: 10 }}>
+                <div style={{ marginBottom:10 }}>
                   <label className="form-label">3 hạng ghế cố định và giá hành lý theo gói</label>
                 </div>
-                {form.seats.map((seat, index) => (
+                {form.seats.map((seat, idx) => (
                   <div className="seat-row" key={seat.class}>
                     <div className="seat-row-header">
-                      <span>{SEAT_CLASS_LABELS[seat.class] || `Hạng ghế ${index + 1}`}</span>
+                      <span>{SEAT_CLASS_LABELS[seat.class] || `Hạng ghế ${idx + 1}`}</span>
                     </div>
                     <div className="form-grid">
                       <div className="form-group">
                         <label className="form-label">Số ghế</label>
-                        <input className="form-control" type="number" value={seat.total_seats} onChange={(e) => setSeatField(index, 'total_seats', e.target.value)} placeholder={SEAT_MAX[seat.class]} min="1" max={SEAT_MAX[seat.class]} />
+                        <input className="form-control" type="number" value={seat.total_seats} onChange={e => setSeatField(idx, 'total_seats', e.target.value)} placeholder={SEAT_MAX[seat.class]} min="1" max={SEAT_MAX[seat.class]} />
                       </div>
                       <div className="form-group full">
                         <label className="form-label">Giá cơ bản (VND)</label>
-                        <input className="form-control" type="number" value={seat.base_price} onChange={(e) => setSeatField(index, 'base_price', e.target.value)} placeholder="1500000" />
+                        <input className="form-control" type="number" value={seat.base_price} onChange={e => setSeatField(idx, 'base_price', e.target.value)} placeholder="1500000" />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Ký gửi miễn phí (kg)</label>
-                        <input className="form-control" type="number" value={seat.baggage_included_kg} onChange={(e) => setSeatField(index, 'baggage_included_kg', e.target.value)} placeholder="23" />
+                        <input className="form-control" type="number" value={seat.baggage_included_kg} onChange={e => setSeatField(idx, 'baggage_included_kg', e.target.value)} placeholder="23" />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Xách tay (kg)</label>
-                        <input className="form-control" type="number" value={seat.carry_on_kg} onChange={(e) => setSeatField(index, 'carry_on_kg', e.target.value)} placeholder="7" />
+                        <input className="form-control" type="number" value={seat.carry_on_kg} onChange={e => setSeatField(idx, 'carry_on_kg', e.target.value)} placeholder="7" />
                       </div>
                       <div className="form-group full">
                         <label className="form-label">Giá hành lý mua thêm theo gói</label>
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                            gap: 16,
-                          }}
-                        >
-                          {BAGGAGE_PACKAGE_KGS.map((kg) => (
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:16 }}>
+                          {BAGGAGE_PACKAGE_KGS.map(kg => (
                             <div className="form-group" key={kg}>
                               <label className="form-label">Giá hành lý {kg}kg (VND)</label>
-                              <input
-                                className="form-control"
-                                type="number"
-                                value={seat.extra_baggage_options?.[kg] ?? seat.extra_baggage_options?.[String(kg)] ?? '0'}
-                                onChange={(e) => setSeatBaggageOption(index, kg, e.target.value)}
-                                placeholder="0"
-                              />
+                              <input className="form-control" type="number" value={seat.extra_baggage_options?.[kg] ?? seat.extra_baggage_options?.[String(kg)] ?? '0'} onChange={e => setSeatBaggageOption(idx, kg, e.target.value)} placeholder="0" />
                             </div>
                           ))}
                         </div>
                       </div>
                       <div className="form-group full">
-                        <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                          Không mua thêm hành lý = 0 VND. Khách chỉ được chọn 4 mức: không mua, 5kg, 10kg, 20kg.
+                        <div style={{ fontSize:12, color:'var(--text-secondary)' }}>
+                          Không mua thêm = 0 VND. Khách chọn 4 mức: không mua, 5kg, 10kg, 20kg.
                         </div>
                       </div>
                     </div>
@@ -641,6 +859,7 @@ export default function FlightsPage() {
                 ))}
               </div>
             </div>
+
             <div className="form-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Huỷ</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu'}</button>
@@ -648,6 +867,12 @@ export default function FlightsPage() {
           </div>
         </div>
       )}
+
+      {/* ─── Price Calculator Modal ──────────────────────────────────── */}
+      {priceCalcOpen && (
+        <PriceCalcPanel airports={airports} airlines={airlines} onClose={() => setPriceCalcOpen(false)} />
+      )}
+
     </>
   )
 }
