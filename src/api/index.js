@@ -98,6 +98,13 @@ export const updateFlight    = (id, data) => api.put(`/admin/flights/${id}`, dat
 export const updateFlightStatus = (id, status) => api.patch(`/admin/flights/${id}/status`, { status })
 export const toggleFlightVisibility = (id) => api.patch(`/admin/flights/${id}/visibility`)
 
+// ─── Flight Schedules ──────────────────────────────────────────────────────
+export const getSchedules           = (params) => api.get('/admin/schedules', { params })
+export const createSchedule         = (data)   => api.post('/admin/schedules', data)
+export const updateScheduleStatus   = (id, is_active) => api.patch(`/admin/schedules/${id}/status`, { is_active })
+export const deleteSchedule         = (id)     => api.delete(`/admin/schedules/${id}`)
+export const triggerGenerateFlights = ()       => api.post('/admin/schedules/generate')
+
 // ─── Airports ──────────────────────────────────────────────────────────────
 export const getAirports     = (params) => api.get('/admin/airports', { params })
 export const createAirport   = (data)   => api.post('/admin/airports', data)

@@ -12,6 +12,7 @@ import CouponsPage from './pages/Coupons'
 import ChatPage from './pages/Chat'
 import RefundsPage from './pages/Refunds'
 import SystemPage from './pages/System'
+import FlightSchedulesPage from './pages/FlightSchedules'
 
 function PrivateRoute({ children }) {
   const { token, user } = useAuth()
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route index element={<DashboardPage />} />
             <Route path="flights" element={<FlightsPage />} />
+            <Route path="schedules" element={<FlightSchedulesPage />} />
             <Route path="airports" element={<AirportsPage />} />
             <Route path="airlines" element={<AirlinesPage />} />
             <Route path="users" element={<UsersPage />} />
