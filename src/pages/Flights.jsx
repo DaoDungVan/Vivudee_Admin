@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { getFlights, createFlight, updateFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { Link } from 'react-router-dom'
-import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert, LuZap, LuCalculator, LuRefreshCw, LuCalendarDays } from 'react-icons/lu'
+import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert, LuZap, LuCalculator, LuRefreshCw, LuCalendarDays, LuArrowLeftRight } from 'react-icons/lu'
 
 const SEARCH_FETCH_LIMIT = 500
 
@@ -17,9 +17,9 @@ const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
 const SEAT_CLASS_LABELS = { economy: 'Economy', business: 'Business', first: 'First Class' }
 const BAGGAGE_PACKAGE_KGS = [5, 10, 20]
 const SEAT_DEFAULTS = {
-  economy: { baggage_included_kg: '23', carry_on_kg: '7', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  business: { baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  first: { baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  economy:  { total_seats: '200', baggage_included_kg: '23', carry_on_kg: '7',  extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  business: { total_seats: '40',  baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  first:    { total_seats: '20',  baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
 }
 
 // ─── Airline / Route validation ───────────────────────────────────────────────
@@ -34,27 +34,31 @@ const FOREIGN_NO_DOMESTIC = new Set([
   'SQ','CX','JL','NH','KE','OZ','TG','MH','AK','FD','TR','MU','CA','CZ','GA',
 ])
 
-// Price multiplier relative to Vietnam Airlines economy = 1.0
-const AIRLINE_TIER = {
-  VN:1.00, QH:0.82, VJ:0.63, BL:0.58, VU:0.67,
-  TG:1.18, SQ:1.40, MH:1.05, TR:0.60, AK:0.55, FD:0.55,
-  OD:0.62, CX:1.42, KE:1.22, OZ:1.12, JL:1.28, NH:1.25,
-  AA:2.20, UA:2.20, DL:2.20, BA:1.90, LH:1.85, AF:1.80, KL:1.78, EK:1.60, TK:1.40,
-}
 const BASE_ECO_PER_MIN = 5000 // VND per flight-minute, VN Airlines baseline
 
-const tierInfo = (code) => {
-  const m = AIRLINE_TIER[String(code || '').toUpperCase()] ?? 1.0
+const getTimeMult = (hour) => {
+  const h = Number(hour)
+  if (isNaN(h) || hour === '' || hour === null) return { mult: 1.0, label: null }
+  if (h >= 5  && h <= 7)  return { mult: 1.10, label: 'sáng sớm +10%' }
+  if (h >= 8  && h <= 10) return { mult: 1.25, label: 'cao điểm sáng +25%' }
+  if (h >= 11 && h <= 14) return { mult: 1.00, label: null }
+  if (h >= 15 && h <= 17) return { mult: 1.10, label: 'chiều +10%' }
+  if (h >= 18 && h <= 21) return { mult: 1.20, label: 'cao điểm tối +20%' }
+  return { mult: 0.85, label: 'đêm/rạng sáng -15%' }
+}
+
+const tierInfo = (tier) => {
+  const m = Number(tier) || 1.0
   if (m >= 1.3) return { label: 'Cao cấp', cls: 'badge-info' }
   if (m >= 0.85) return { label: 'Trung cấp', cls: 'badge-warning' }
   return { label: 'Giá rẻ', cls: 'badge-success' }
 }
 
-const calcPrices = (durationMins, airlineCode) => {
+const calcPrices = (durationMins, tierMult, departureHour = null) => {
   const mins = Number(durationMins) || 0
-  if (!mins || !airlineCode) return null
-  const mult = AIRLINE_TIER[String(airlineCode).toUpperCase()] ?? 1.0
-  const eco = Math.round(mins * BASE_ECO_PER_MIN * mult / 10000) * 10000
+  if (!mins || !tierMult) return null
+  const { mult: timeMult } = getTimeMult(departureHour)
+  const eco = Math.round(mins * BASE_ECO_PER_MIN * tierMult * timeMult / 10000) * 10000
   return { economy: eco, business: Math.round(eco * 2.8 / 10000) * 10000, first: Math.round(eco * 5.5 / 10000) * 10000 }
 }
 
@@ -70,12 +74,14 @@ const getRouteWarning = (airlineCode, depCode, arrCode) => {
   return null
 }
 
+const ACTIVE_FLIGHT_STATUSES = new Set(['scheduled', 'delayed', 'boarding', 'departed', 'arrived'])
+
 const autoGenFlightNum = (airlineCode, existingFlights) => {
   if (!airlineCode) return ''
   const code = String(airlineCode).toUpperCase()
   const used = new Set(
     existingFlights
-      .filter(f => f.status !== 'completed' && String(f.flight_number || '').startsWith(code))
+      .filter(f => ACTIVE_FLIGHT_STATUSES.has(f.status) && String(f.flight_number || '').startsWith(code))
       .map(f => parseInt(String(f.flight_number || '').slice(code.length), 10))
       .filter(n => !isNaN(n) && n >= 100 && n <= 999)
   )
@@ -96,6 +102,23 @@ const addMinsToISO = (isoStr, mins) => {
   d.setMinutes(d.getMinutes() + Number(mins))
   const p = n => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+const haversineKm = (lat1, lng1, lat2, lng2) => {
+  const R = 6371
+  const toRad = d => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
+
+const estimateFlightMins = (km) => {
+  if (km <= 500)  return Math.round(km / 500 * 60) + 40
+  if (km <= 1500) return Math.round(km / 700 * 60) + 25
+  if (km <= 4000) return Math.round(km / 820 * 60) + 30
+  if (km <= 8000) return Math.round(km / 860 * 60) + 40
+  return Math.round(km / 900 * 60) + 60
 }
 
 // ─── Seat helpers ─────────────────────────────────────────────────────────────
@@ -159,12 +182,15 @@ const sortFlights = (items, dir) =>
   })
 
 const STATUS_LABELS = {
-  scheduled: { label: 'Đã lên lịch', cls: 'badge-info' },
-  delayed: { label: 'Trễ giờ', cls: 'badge-warning' },
-  cancelled: { label: 'Đã huỷ', cls: 'badge-danger' },
-  completed: { label: 'Hoàn thành', cls: 'badge-success' },
+  scheduled: { label: 'Đã lên lịch',    cls: 'badge-info' },
+  delayed:   { label: 'Trễ giờ',        cls: 'badge-warning' },
+  boarding:  { label: 'Lên máy bay',    cls: 'badge-warning' },
+  departed:  { label: 'Đã khởi hành',   cls: 'badge-success' },
+  arrived:   { label: 'Đã hạ cánh',     cls: 'badge-success' },
+  cancelled: { label: 'Đã huỷ',         cls: 'badge-danger' },
+  completed: { label: 'Hoàn thành',     cls: 'badge-muted' },
 }
-const FLIGHT_STATUSES = ['scheduled', 'delayed', 'cancelled', 'completed']
+const FLIGHT_STATUSES = ['scheduled', 'delayed', 'boarding', 'departed', 'arrived', 'cancelled', 'completed']
 
 const formatRawDateTime = (iso) => {
   if (!iso) return '—'
@@ -216,11 +242,7 @@ function PriceCalcPanel({ airports, airlines, onClose }) {
       const code = (a.code || '').toUpperCase()
       return isDomestic ? VN_DOMESTIC_AIRLINES.includes(code) : true
     })
-    .sort((a, b) => {
-      const ma = AIRLINE_TIER[(a.code || '').toUpperCase()] ?? 1.0
-      const mb = AIRLINE_TIER[(b.code || '').toUpperCase()] ?? 1.0
-      return mb - ma
-    })
+    .sort((a, b) => (Number(b.price_tier) || 1.0) - (Number(a.price_tier) || 1.0))
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -272,9 +294,9 @@ function PriceCalcPanel({ airports, airlines, onClose }) {
               </thead>
               <tbody>
                 {relevantAirlines.map(a => {
-                  const prices = calcPrices(totalMins, a.code)
+                  const prices = calcPrices(totalMins, Number(a.price_tier) || 1.0)
                   if (!prices) return null
-                  const { label, cls } = tierInfo(a.code)
+                  const { label, cls } = tierInfo(a.price_tier)
                   return (
                     <tr key={a.id} style={{ borderTop:'1px solid var(--border)' }}>
                       <td style={{ padding:'7px 10px', fontWeight:500 }}>
@@ -304,6 +326,54 @@ function PriceCalcPanel({ airports, airlines, onClose }) {
 }
 
 
+// ─── SearchSelect ─────────────────────────────────────────────────────────────
+
+function SearchSelect({ value, onChange, options, placeholder = '-- Chọn --' }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen]   = useState(false)
+  const selected = options.find(o => String(o.value) === String(value))
+  const q = query.toLowerCase()
+  const filtered = q ? options.filter(o => o.label.toLowerCase().includes(q)) : options
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="form-control"
+        autoComplete="off"
+        value={open ? query : (selected?.label || '')}
+        placeholder={open ? 'Tìm kiếm...' : placeholder}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 300,
+          background: 'var(--bg-card, #fff)', border: '1px solid var(--border)',
+          borderRadius: 6, maxHeight: 220, overflowY: 'auto',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+        }}>
+          {filtered.length === 0
+            ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>Không tìm thấy</div>
+            : filtered.map(o => (
+              <div
+                key={o.value}
+                onMouseDown={e => { e.preventDefault(); onChange(o.value); setOpen(false) }}
+                style={{
+                  padding: '9px 14px', cursor: 'pointer', fontSize: 13,
+                  background: String(o.value) === String(value) ? 'rgba(14,129,205,0.08)' : '',
+                  color: String(o.value) === String(value) ? 'var(--accent)' : 'var(--text-primary)',
+                }}
+              >
+                {o.label}
+              </div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function FlightsPage() {
@@ -325,7 +395,8 @@ export default function FlightsPage() {
   const [airports, setAirports] = useState([])
   const [airlines, setAirlines] = useState([])
   const [priceCalcOpen, setPriceCalcOpen] = useState(false)
-const [flightNumAuto, setFlightNumAuto] = useState(true)
+  const [flightNumAuto, setFlightNumAuto] = useState(true)
+  const [durCalcInfo, setDurCalcInfo] = useState(null) // { km, mins } | { error }
   const requestIdRef = useRef(0)
   const saveLockRef = useRef(false)
   const debouncedSearch = useDebouncedValue(search)
@@ -381,6 +452,7 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
     setForm(createEmptyFlight())
     setError('')
     setFlightNumAuto(true)
+    setDurCalcInfo(null)
     setModal('create')
     setEditData(null)
   }
@@ -399,6 +471,7 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
     })
     setError('')
     setFlightNumAuto(false)
+    setDurCalcInfo(null)
     setModal('edit')
   }
 
@@ -414,7 +487,10 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
     }
   }
 
-  const SEAT_MAX = { economy: 200, business: 80, first: 20 }
+  const swapAirports = () =>
+    setForm(p => ({ ...p, departure_airport_id: p.arrival_airport_id, arrival_airport_id: p.departure_airport_id }))
+
+  const SEAT_MAX = { economy: 200, business: 40, first: 20 }
 
   const handleSave = async () => {
     if (saveLockRef.current) return
@@ -478,7 +554,10 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
   const depCode = depAirport?.code || ''
   const arrCode = arrAirport?.code || ''
   const routeWarning = getRouteWarning(selectedAirlineCode, depCode, arrCode)
-  const priceSuggestion = calcPrices(form.duration_minutes, selectedAirlineCode)
+  const depHour        = form.departure_time ? Number(form.departure_time.slice(11, 13)) : null
+  const airlineTier    = Number(selectedAirline?.price_tier) || 1.0
+  const priceSuggestion = calcPrices(form.duration_minutes, airlineTier, depHour)
+  const timeInfo        = getTimeMult(depHour)
 
   const durTotal = Number(form.duration_minutes) || 0
   const durH = form.duration_minutes !== '' ? Math.floor(durTotal / 60) : ''
@@ -503,6 +582,18 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
   const handleAutoArrival = () => {
     if (form.departure_time && form.duration_minutes)
       setField('arrival_time', addMinsToISO(form.departure_time, form.duration_minutes))
+  }
+
+  const handleAutoCalcDuration = () => {
+    const dep = airports.find(a => String(a.id) === String(form.departure_airport_id))
+    const arr = airports.find(a => String(a.id) === String(form.arrival_airport_id))
+    if (!dep || !arr) return setDurCalcInfo({ error: 'Chọn sân bay đi và đến trước' })
+    if (dep.lat == null || dep.lng == null) return setDurCalcInfo({ error: `Sân bay ${dep.code} chưa có tọa độ trong DB` })
+    if (arr.lat == null || arr.lng == null) return setDurCalcInfo({ error: `Sân bay ${arr.code} chưa có tọa độ trong DB` })
+    const km = haversineKm(Number(dep.lat), Number(dep.lng), Number(arr.lat), Number(arr.lng))
+    const mins = estimateFlightMins(km)
+    setField('duration_minutes', String(mins))
+    setDurCalcInfo({ km: Math.round(km), mins })
   }
 
   const handleApplyPrices = () => {
@@ -639,7 +730,7 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
       {/* ─── Create / Edit Modal ─────────────────────────────────────── */}
       {modal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: 740 }}>
             <div className="modal-header">
               <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
                 {modal === 'create' ? '+ Thêm chuyến bay' : <><LuPencil size={15}/> Cập nhật chuyến bay</>}
@@ -704,28 +795,45 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
               {/* Airline */}
               <div className="form-group">
                 <label className="form-label">Hãng bay *</label>
-                <select className="form-control" value={form.airline_id} onChange={e => handleAirlineChange(e.target.value)}>
-                  <option value="">-- Chọn hãng --</option>
-                  {airlines.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
-                </select>
+                <SearchSelect
+                  value={form.airline_id}
+                  onChange={handleAirlineChange}
+                  options={airlines.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))}
+                  placeholder="-- Chọn hãng --"
+                />
               </div>
 
-              {/* Departure airport */}
-              <div className="form-group">
-                <label className="form-label">Sân bay đi *</label>
-                <select className="form-control" value={form.departure_airport_id} onChange={e => setField('departure_airport_id', e.target.value)}>
-                  <option value="">-- Chọn sân bay --</option>
-                  {airports.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
-                </select>
-              </div>
-
-              {/* Arrival airport */}
-              <div className="form-group">
-                <label className="form-label">Sân bay đến *</label>
-                <select className="form-control" value={form.arrival_airport_id} onChange={e => setField('arrival_airport_id', e.target.value)}>
-                  <option value="">-- Chọn sân bay --</option>
-                  {airports.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
-                </select>
+              {/* Airports + swap */}
+              <div className="form-group full">
+                <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+                  <div style={{ flex:1 }}>
+                    <label className="form-label">Sân bay đi *</label>
+                    <SearchSelect
+                      value={form.departure_airport_id}
+                      onChange={v => setField('departure_airport_id', v)}
+                      options={airports.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))}
+                    />
+                  </div>
+                  <button
+                    type="button" title="Đảo chiều" onClick={swapAirports}
+                    style={{
+                      height:38, width:38, borderRadius:6, border:'1px solid var(--border)',
+                      background:'var(--bg-input)', cursor:'pointer', flexShrink:0,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      color:'var(--text-secondary)',
+                    }}
+                  >
+                    <LuArrowLeftRight size={16}/>
+                  </button>
+                  <div style={{ flex:1 }}>
+                    <label className="form-label">Sân bay đến *</label>
+                    <SearchSelect
+                      value={form.arrival_airport_id}
+                      onChange={v => setField('arrival_airport_id', v)}
+                      options={airports.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Departure time */}
@@ -766,12 +874,12 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
               {/* Duration */}
               <div className="form-group full">
                 <label className="form-label">Thời gian bay *</label>
-                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
                   <input
                     className="form-control"
                     type="number" min="0" max="24"
                     value={durH}
-                    onChange={e => setDurH(e.target.value)}
+                    onChange={e => { setDurH(e.target.value); setDurCalcInfo(null) }}
                     placeholder="1"
                     style={{ width:80 }}
                   />
@@ -780,7 +888,7 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
                     className="form-control"
                     type="number" min="0"
                     value={durM}
-                    onChange={e => setDurM(e.target.value)}
+                    onChange={e => { setDurM(e.target.value); setDurCalcInfo(null) }}
                     placeholder="30"
                     style={{ width:80 }}
                   />
@@ -788,7 +896,25 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
                   {form.duration_minutes ? (
                     <span style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>= {form.duration_minutes} phút tổng</span>
                   ) : null}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ display:'flex', alignItems:'center', gap:4, whiteSpace:'nowrap' }}
+                    disabled={!form.departure_airport_id || !form.arrival_airport_id}
+                    onClick={handleAutoCalcDuration}
+                    title="Tự động ước tính dựa vào khoảng cách thực tế giữa hai sân bay"
+                  >
+                    <LuRefreshCw size={12}/> Tự tính
+                  </button>
                 </div>
+                {durCalcInfo && (
+                  <div style={{ fontSize:11, marginTop:5, lineHeight:1.5, color: durCalcInfo.error ? 'var(--danger)' : 'var(--success)' }}>
+                    {durCalcInfo.error
+                      ? `⚠ ${durCalcInfo.error}`
+                      : `✓ Khoảng cách ~${durCalcInfo.km.toLocaleString('vi-VN')} km → ước tính ${Math.floor(durCalcInfo.mins / 60)}h${durCalcInfo.mins % 60 > 0 ? ` ${durCalcInfo.mins % 60}m` : ''} (đã tính thời gian lăn bánh)`
+                    }
+                  </div>
+                )}
                 <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>
                   Có thể điền chỉ ô phút (ví dụ 90) hoặc kết hợp giờ + phút (1 giờ 30 phút)
                 </div>
@@ -798,7 +924,11 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
               {priceSuggestion && (
                 <div className="form-group full">
                   <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'var(--bg-input)', border:'1px solid var(--border)', borderRadius:6, fontSize:12, flexWrap:'wrap' }}>
-                    <span style={{ color:'var(--text-secondary)', whiteSpace:'nowrap' }}>Gợi ý giá ({selectedAirlineCode}) :</span>
+                    <span style={{ color:'var(--text-secondary)', whiteSpace:'nowrap' }}>
+                      Gợi ý giá ({selectedAirlineCode}
+                      {timeInfo.label && <span style={{ color:'var(--accent)', marginLeft:4 }}>· {timeInfo.label}</span>}
+                      ) :
+                    </span>
                     <span>Economy <strong>{fmtPrice(priceSuggestion.economy)}</strong></span>
                     <span style={{ color:'var(--text-muted)' }}>·</span>
                     <span>Business <strong>{fmtPrice(priceSuggestion.business)}</strong></span>
@@ -828,7 +958,13 @@ const [flightNumAuto, setFlightNumAuto] = useState(true)
                       </div>
                       <div className="form-group full">
                         <label className="form-label">Giá cơ bản (VND)</label>
-                        <input className="form-control" type="number" value={seat.base_price} onChange={e => setSeatField(idx, 'base_price', e.target.value)} placeholder="1500000" />
+                        <input className="form-control" type="number" value={seat.base_price} onChange={e => setSeatField(idx, 'base_price', e.target.value)} placeholder="VD: 1500000" />
+                        <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)', lineHeight:1.6 }}>
+                          <span style={{ color:'var(--success)', fontWeight:600 }}>✓ Không bắt buộc.</span>{' '}
+                          Để trống nếu chưa xác định — dùng nút{' '}
+                          <span style={{ color:'var(--accent)', fontWeight:500 }}>Áp dụng vào ghế</span>{' '}
+                          để điền giá gợi ý tự động.
+                        </div>
                       </div>
                       <div className="form-group">
                         <label className="form-label">Ký gửi miễn phí (kg)</label>

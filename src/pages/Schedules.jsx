@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createFlight, getAirports, getAirlines, getFlights } from '../api'
-import { LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw } from 'react-icons/lu'
+import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights } from '../api'
+import {
+  LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
+  LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
+} from 'react-icons/lu'
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
 
@@ -17,10 +20,11 @@ const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
 const SEAT_CLASS_LABELS = { economy: 'Economy', business: 'Business', first: 'First Class' }
 const BAGGAGE_PACKAGE_KGS = [5, 10, 20]
 const SEAT_DEFAULTS = {
-  economy: { baggage_included_kg: '23', carry_on_kg: '7', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  business: { baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  first:    { baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  economy:  { total_seats: '200', baggage_included_kg: '23', carry_on_kg: '7',  extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  business: { total_seats: '40',  baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  first:    { total_seats: '20',  baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
 }
+const SEAT_MAX = { economy: 200, business: 40, first: 20 }
 
 const VN_AIRPORTS = new Set([
   'SGN','HAN','DAD','HPH','CXR','VCA','PQC','VDH','HUI','BMV',
@@ -32,25 +36,29 @@ const FOREIGN_NO_DOMESTIC = new Set([
   'SQ','CX','JL','NH','KE','OZ','TG','MH','AK','FD','TR','MU','CA','CZ','GA',
 ])
 
-const AIRLINE_TIER = {
-  VN:1.00, QH:0.82, VJ:0.63, BL:0.58, VU:0.67,
-  TG:1.18, SQ:1.40, MH:1.05, TR:0.60, AK:0.55, FD:0.55,
-  OD:0.62, CX:1.42, KE:1.22, OZ:1.12, JL:1.28, NH:1.25,
-  AA:2.20, UA:2.20, DL:2.20, BA:1.90, LH:1.85, AF:1.80, KL:1.78, EK:1.60, TK:1.40,
-}
 const BASE_ECO_PER_MIN = 5000
+
+const getTimeMult = (hour) => {
+  const h = Number(hour)
+  if (isNaN(h) || hour === '' || hour === null) return { mult: 1.0, label: null }
+  if (h >= 5  && h <= 7)  return { mult: 1.10, label: 'sáng sớm +10%' }
+  if (h >= 8  && h <= 10) return { mult: 1.25, label: 'cao điểm sáng +25%' }
+  if (h >= 11 && h <= 14) return { mult: 1.00, label: null }
+  if (h >= 15 && h <= 17) return { mult: 1.10, label: 'chiều +10%' }
+  if (h >= 18 && h <= 21) return { mult: 1.20, label: 'cao điểm tối +20%' }
+  return { mult: 0.85, label: 'đêm/rạng sáng -15%' }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const createSeat = (cls = 'economy') => ({ class: cls, total_seats: '', base_price: '', ...SEAT_DEFAULTS[cls] })
-
 const buildSeatFormList = () => SEAT_CLASS_ORDER.map(cls => createSeat(cls))
 
-const calcPrices = (durationMins, airlineCode) => {
+const calcPrices = (durationMins, tierMult, departureHour = null) => {
   const mins = Number(durationMins) || 0
-  if (!mins || !airlineCode) return null
-  const mult = AIRLINE_TIER[String(airlineCode).toUpperCase()] ?? 1.0
-  const eco = Math.round(mins * BASE_ECO_PER_MIN * mult / 10000) * 10000
+  if (!mins || !tierMult) return null
+  const { mult: timeMult } = getTimeMult(departureHour)
+  const eco = Math.round(mins * BASE_ECO_PER_MIN * tierMult * timeMult / 10000) * 10000
   return { economy: eco, business: Math.round(eco * 2.8 / 10000) * 10000, first: Math.round(eco * 5.5 / 10000) * 10000 }
 }
 
@@ -66,17 +74,35 @@ const getRouteWarning = (airlineCode, depCode, arrCode) => {
   return null
 }
 
-const autoGenFlightNum = (airlineCode, existingFlights) => {
-  if (!airlineCode) return ''
+const ACTIVE_FLIGHT_STATUSES = new Set(['scheduled', 'delayed', 'boarding', 'departed', 'arrived'])
+
+// Tất cả 24 khung giờ trong ngày
+const ALL_DAY_TIMES = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+
+// Chọn N khung giờ phân bổ đều trong ngày (0 hoặc >= 24 → trả về tất cả 24)
+const getTimeSlotsForDay = (flightsPerDay) => {
+  const n = Number(flightsPerDay)
+  if (!n || n <= 0 || n >= 24) return ALL_DAY_TIMES
+  const slots = new Set()
+  for (let i = 0; i < n; i++) slots.add(Math.floor(i * 24 / n))
+  return [...slots].sort((a, b) => a - b).map(h => `${String(h).padStart(2, '0')}:00`)
+}
+
+// Tạo pool số hiệu khả dụng cho một hãng — dùng trong tạo lịch hàng loạt
+const genFlightNumPool = (airlineCode, existingFlights, needed) => {
+  if (!airlineCode) return []
   const code = String(airlineCode).toUpperCase()
   const used = new Set(
     existingFlights
-      .filter(f => f.status !== 'completed' && String(f.flight_number || '').startsWith(code))
+      .filter(f => ACTIVE_FLIGHT_STATUSES.has(f.status) && String(f.flight_number || '').startsWith(code))
       .map(f => parseInt(String(f.flight_number || '').slice(code.length), 10))
       .filter(n => !isNaN(n) && n >= 100 && n <= 999)
   )
-  for (let i = 100; i <= 999; i++) if (!used.has(i)) return `${code}${i}`
-  return `${code}${100 + (Date.now() % 900)}`
+  const pool = []
+  for (let i = 100; i <= 999 && pool.length < needed; i++) {
+    if (!used.has(i)) pool.push(`${code}${i}`)
+  }
+  return pool
 }
 
 const addMinsToISO = (isoStr, mins) => {
@@ -105,11 +131,129 @@ const getDatesInRange = (startDate, endDate, daysOfWeek) => {
 }
 
 const emptyForm = () => ({
-  flight_number: '', airline_id: '', departure_airport_id: '', arrival_airport_id: '',
-  dep_hour: '08', dep_minute: '00', dur_h: '', dur_m: '',
+  airline_id: '', departure_airport_id: '', arrival_airport_id: '',
+  dur_h: '', dur_m: '',
   start_date: '', end_date: '', days_of_week: [1, 2, 3, 4, 5],
+  flights_per_day: '',
   seats: buildSeatFormList(),
 })
+
+// ─── Distance / duration helpers ──────────────────────────────────────────────
+
+const haversineKm = (lat1, lng1, lat2, lng2) => {
+  const R = 6371
+  const toRad = d => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
+
+const estimateFlightMins = (km) => {
+  if (km <= 500)  return Math.round(km / 500 * 60) + 40
+  if (km <= 1500) return Math.round(km / 700 * 60) + 25
+  if (km <= 4000) return Math.round(km / 820 * 60) + 30
+  if (km <= 8000) return Math.round(km / 860 * 60) + 40
+  return Math.round(km / 900 * 60) + 60
+}
+
+// ─── Schedule list helpers ────────────────────────────────────────────────────
+
+const groupBySchedule = (flights) => {
+  const map = new Map()
+  for (const f of flights) {
+    const key = f.flight_number
+    if (!map.has(key)) {
+      map.set(key, {
+        flight_number: key,
+        airline_name: f.airline_name || f.airline_code || '?',
+        airline_id: f.airline_id,
+        airline_code: f.airline_code || '',
+        dep_code: f.departure_code || f.dep_code || '?',
+        arr_code: f.arrival_code || f.arr_code || '?',
+        dep_id: f.departure_airport_id || f.dep_id || '',
+        arr_id: f.arrival_airport_id || f.arr_id || '',
+        duration_minutes: f.duration_minutes,
+        flights: [],
+      })
+    }
+    map.get(key).flights.push(f)
+  }
+  return [...map.values()].sort((a, b) => a.flight_number.localeCompare(b.flight_number))
+}
+
+const getGroupState = (group) => {
+  const nonTerminal = group.flights.filter(f => f.status !== 'cancelled' && f.status !== 'completed')
+  if (nonTerminal.length === 0) return 'cancelled'
+  return nonTerminal.every(f => f.is_active === false) ? 'paused' : 'active'
+}
+
+const getGroupDateRange = (group) => {
+  const times = group.flights
+    .map(f => f.departure_time)
+    .filter(Boolean)
+    .map(t => String(t).replace(' ', 'T'))
+    .sort()
+  if (!times.length) return null
+  const fmt = (t) => { const m = t.match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : t }
+  return { from: fmt(times[0]), to: fmt(times[times.length - 1]) }
+}
+
+const getGroupStats = (group) => ({
+  total:       group.flights.length,
+  scheduled:   group.flights.filter(f => f.status === 'scheduled').length,
+  cancellable: group.flights.filter(f => f.status === 'scheduled' || f.status === 'delayed').length,
+  paused:      group.flights.filter(f => f.status !== 'cancelled' && f.status !== 'completed' && f.is_active === false).length,
+  cancelled:   group.flights.filter(f => f.status === 'cancelled').length,
+})
+
+// ─── SearchSelect ─────────────────────────────────────────────────────────────
+
+function SearchSelect({ value, onChange, options, placeholder = '-- Chọn --' }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen]   = useState(false)
+  const selected = options.find(o => String(o.value) === String(value))
+  const q = query.toLowerCase()
+  const filtered = q ? options.filter(o => o.label.toLowerCase().includes(q)) : options
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        className="form-control"
+        autoComplete="off"
+        value={open ? query : (selected?.label || '')}
+        placeholder={open ? 'Tìm kiếm...' : placeholder}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 300,
+          background: 'var(--bg-card, #fff)', border: '1px solid var(--border)',
+          borderRadius: 6, maxHeight: 220, overflowY: 'auto',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+        }}>
+          {filtered.length === 0
+            ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>Không tìm thấy</div>
+            : filtered.map(o => (
+              <div
+                key={o.value}
+                onMouseDown={e => { e.preventDefault(); onChange(o.value); setOpen(false) }}
+                style={{
+                  padding: '9px 14px', cursor: 'pointer', fontSize: 13,
+                  background: String(o.value) === String(value) ? 'rgba(14,129,205,0.08)' : '',
+                  color: String(o.value) === String(value) ? 'var(--accent)' : 'var(--text-primary)',
+                }}
+              >
+                {o.label}
+              </div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -119,18 +263,27 @@ export default function SchedulesPage() {
   const [airlines, setAirlines] = useState([])
   const [flights, setFlights]   = useState([])
   const [form, setForm]         = useState(emptyForm)
-  const [flightNumAuto, setFlightNumAuto] = useState(true)
-  const [seatsOpen, setSeatsOpen]         = useState(false)
+  const [seatsOpen, setSeatsOpen] = useState(false)
   const [error, setError]   = useState('')
   const [creating, setCreating] = useState(false)
   const [progress, setProgress] = useState(null)
   const [result, setResult]     = useState(null)
+  // ── Schedule list state ──────────────────────────────────────────────────────
+  const [groupSearch, setGroupSearch]       = useState('')
+  const [confirmAction, setConfirmAction]   = useState(null) // { type, group }
+  const [actionLoading, setActionLoading]   = useState(false)
+  const [durCalcInfo, setDurCalcInfo]       = useState(null) // { km, mins } | { error }
+
+  const loadFlights = () =>
+    getFlights({ limit: 500 }).then(r => setFlights(r.data.data || [])).catch(() => {})
 
   useEffect(() => {
     getAirports({ limit: 200 }).then(r => setAirports(r.data.data || [])).catch(() => {})
     getAirlines({ limit: 100 }).then(r => setAirlines(r.data.data || [])).catch(() => {})
-    getFlights({ limit: 500 }).then(r => setFlights(r.data.data || [])).catch(() => {})
+    loadFlights()
   }, [])
+
+  // ── Form helpers ─────────────────────────────────────────────────────────────
 
   const sf = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const setSeatField = (idx, key, value) =>
@@ -145,72 +298,182 @@ export default function SchedulesPage() {
         : [...p.days_of_week, day],
     }))
 
-  const handleAirlineChange = (airlineId) => {
-    sf('airline_id', airlineId)
-    if (flightNumAuto) {
-      const a = airlines.find(x => String(x.id) === String(airlineId))
-      sf('flight_number', a?.code ? autoGenFlightNum(a.code, flights) : '')
+  const handleAirlineChange = (airlineId) => sf('airline_id', airlineId)
+
+  const swapAirports = () =>
+    setForm(p => ({ ...p, departure_airport_id: p.arrival_airport_id, arrival_airport_id: p.departure_airport_id }))
+
+  const handleAutoCalcDuration = () => {
+    const dep = airports.find(a => String(a.id) === String(form.departure_airport_id))
+    const arr = airports.find(a => String(a.id) === String(form.arrival_airport_id))
+    if (!dep || !arr) return setDurCalcInfo({ error: 'Chọn sân bay đi và đến trước' })
+    if (dep.lat == null || dep.lng == null) return setDurCalcInfo({ error: `Sân bay ${dep.code} chưa có tọa độ trong DB` })
+    if (arr.lat == null || arr.lng == null) return setDurCalcInfo({ error: `Sân bay ${arr.code} chưa có tọa độ trong DB` })
+    const km = haversineKm(Number(dep.lat), Number(dep.lng), Number(arr.lat), Number(arr.lng))
+    const mins = estimateFlightMins(km)
+    setForm(p => ({ ...p, dur_h: String(Math.floor(mins / 60)), dur_m: String(mins % 60) }))
+    setDurCalcInfo({ km: Math.round(km), mins })
+  }
+
+  const handleDurMChange = (val) => {
+    const m = Number(val)
+    if (!isNaN(m) && m >= 60) {
+      setForm(p => ({ ...p, dur_h: String(Number(p.dur_h || 0) + Math.floor(m / 60)), dur_m: String(m % 60) }))
+    } else {
+      sf('dur_m', val)
     }
   }
+
+  // Không tự động điền giá — người dùng bấm "Áp dụng" để áp giá gợi ý
+
+  // ── Schedule list actions ────────────────────────────────────────────────────
+
+  const handleCancelGroup = async (group) => {
+    setActionLoading(true)
+    const toCancel = group.flights.filter(f => f.status === 'scheduled' || f.status === 'delayed')
+    for (const f of toCancel) {
+      try { await updateFlightStatus(f.id, 'cancelled') } catch {}
+    }
+    setActionLoading(false)
+    setConfirmAction(null)
+    loadFlights()
+  }
+
+  const handlePauseGroup = async (group) => {
+    setActionLoading(true)
+    const toPause = group.flights.filter(f =>
+      f.status !== 'cancelled' && f.status !== 'completed' && f.is_active !== false
+    )
+    for (const f of toPause) {
+      try { await toggleFlightVisibility(f.id) } catch {}
+    }
+    setActionLoading(false)
+    setConfirmAction(null)
+    loadFlights()
+  }
+
+  const handleResumeGroup = async (group) => {
+    setActionLoading(true)
+    const toResume = group.flights.filter(f =>
+      f.status !== 'cancelled' && f.status !== 'completed' && f.is_active === false
+    )
+    for (const f of toResume) {
+      try { await toggleFlightVisibility(f.id) } catch {}
+    }
+    setActionLoading(false)
+    setConfirmAction(null)
+    loadFlights()
+  }
+
+  const prefillFromGroup = (group) => {
+    const depAirport = airports.find(a => a.id === group.dep_id || (a.code || '').toUpperCase() === group.dep_code.toUpperCase())
+    const arrAirport = airports.find(a => a.id === group.arr_id || (a.code || '').toUpperCase() === group.arr_code.toUpperCase())
+    const airline    = airlines.find(a => a.id === group.airline_id || (a.code || '').toUpperCase() === group.airline_code.toUpperCase())
+    const durH = group.duration_minutes ? Math.floor(group.duration_minutes / 60) : 0
+    const durM = group.duration_minutes ? group.duration_minutes % 60 : 0
+    setForm({
+      ...emptyForm(),
+      airline_id:           airline?.id || '',
+      departure_airport_id: depAirport?.id || '',
+      arrival_airport_id:   arrAirport?.id || '',
+      dur_h: durH ? String(durH) : '',
+      dur_m: durM ? String(durM) : '',
+    })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // ── Derived values ───────────────────────────────────────────────────────────
 
   const selectedAirline     = airlines.find(a => String(a.id) === String(form.airline_id))
   const selectedAirlineCode = selectedAirline?.code || ''
   const depCode = airports.find(a => String(a.id) === String(form.departure_airport_id))?.code || ''
   const arrCode = airports.find(a => String(a.id) === String(form.arrival_airport_id))?.code || ''
-  const routeWarning   = getRouteWarning(selectedAirlineCode, depCode, arrCode)
-  const durMins        = Number(form.dur_h || 0) * 60 + Number(form.dur_m || 0)
-  const priceSuggestion = calcPrices(durMins, selectedAirlineCode)
-  const previewDates   = getDatesInRange(form.start_date, form.end_date, form.days_of_week)
+  const routeWarning    = getRouteWarning(selectedAirlineCode, depCode, arrCode)
+  const durMins         = Number(form.dur_h || 0) * 60 + Number(form.dur_m || 0)
+  const airlineTier     = Number(selectedAirline?.price_tier) || 1.0
+  const priceSuggestion = calcPrices(durMins, airlineTier, null)
+  const previewDates    = getDatesInRange(form.start_date, form.end_date, form.days_of_week)
+  const effectiveDates  = previewDates
+  const timeSlotsPerDay = getTimeSlotsForDay(form.flights_per_day)
+
+  const totalToCreate   = effectiveDates.length * timeSlotsPerDay.length
+  const numPoolPreview  = selectedAirlineCode ? genFlightNumPool(selectedAirlineCode, flights, totalToCreate) : []
+  const poolShortfall   = totalToCreate > 0 && numPoolPreview.length < totalToCreate
+
+  const scheduleGroups  = groupBySchedule(flights)
+  const filteredGroups  = groupSearch.trim()
+    ? scheduleGroups.filter(g =>
+        g.flight_number.toLowerCase().includes(groupSearch.toLowerCase()) ||
+        g.dep_code.toLowerCase().includes(groupSearch.toLowerCase()) ||
+        g.arr_code.toLowerCase().includes(groupSearch.toLowerCase()) ||
+        g.airline_name.toLowerCase().includes(groupSearch.toLowerCase())
+      )
+    : scheduleGroups
 
   const handleApplyPrices = () => {
     if (!priceSuggestion) return
     setForm(p => ({ ...p, seats: p.seats.map(s => ({ ...s, base_price: String(priceSuggestion[s.class] ?? s.base_price) })) }))
   }
 
+  // ── Create handler ───────────────────────────────────────────────────────────
+
   const handleCreate = async () => {
-    if (!form.flight_number)  return setError('Cần có số hiệu bay')
     if (!form.airline_id)     return setError('Chọn hãng bay')
     if (!form.departure_airport_id || !form.arrival_airport_id) return setError('Chọn đủ sân bay đi và đến')
     if (!durMins)             return setError('Nhập thời gian bay')
     if (!form.start_date || !form.end_date) return setError('Chọn ngày bắt đầu và kết thúc')
     if (new Date(form.end_date) < new Date(form.start_date)) return setError('Ngày kết thúc phải sau ngày bắt đầu')
     if (!form.days_of_week.length) return setError('Chọn ít nhất 1 ngày trong tuần')
-    if (!previewDates.length) return setError('Không có ngày nào trong khoảng đã chọn')
+    if (!effectiveDates.length) return setError('Không có ngày nào trong khoảng đã chọn')
+    for (const seat of form.seats) {
+      const n = Number(seat.total_seats)
+      const max = SEAT_MAX[seat.class]
+      if (max && n > max) {
+        setError(`${SEAT_CLASS_LABELS[seat.class]} tối đa ${max} ghế (hiện tại: ${n})`)
+        return
+      }
+    }
+
+    const totalFlights = effectiveDates.length * timeSlotsPerDay.length
+    const numPool = genFlightNumPool(selectedAirlineCode, flights, totalFlights)
+    if (numPool.length < totalFlights) {
+      return setError(`Không đủ số hiệu bay khả dụng cho ${selectedAirlineCode} (cần ${totalFlights}, còn lại ${numPool.length} số chưa dùng). Hãy chờ các chuyến hiện tại kết thúc hoặc giảm khoảng ngày.`)
+    }
 
     setError('')
     setCreating(true)
-    setProgress({ done: 0, total: previewDates.length, failed: 0 })
+    setProgress({ done: 0, total: totalFlights, failed: 0 })
 
-    const p2 = n => String(n).padStart(2, '0')
-    const depH = p2(Number(form.dep_hour) || 0)
-    const depM = p2(Number(form.dep_minute) || 0)
     const seatPayload = form.seats.map(s => ({
-      class: s.class, total_seats: s.total_seats, base_price: s.base_price,
+      class: s.class, total_seats: s.total_seats, base_price: s.base_price || null,
       baggage_included_kg: s.baggage_included_kg, carry_on_kg: s.carry_on_kg,
       extra_baggage_options: { 0: 0, 5: Number(s.extra_baggage_options?.[5] ?? 0), 10: Number(s.extra_baggage_options?.[10] ?? 0), 20: Number(s.extra_baggage_options?.[20] ?? 0) },
     }))
 
-    let done = 0, failed = 0
-    for (const dateStr of previewDates) {
-      const depTime = `${dateStr}T${depH}:${depM}`
-      try {
-        await createFlight({
-          flight_number: form.flight_number,
-          airline_id: form.airline_id,
-          departure_airport_id: form.departure_airport_id,
-          arrival_airport_id: form.arrival_airport_id,
-          departure_time: depTime,
-          arrival_time: addMinsToISO(depTime, durMins),
-          duration_minutes: durMins,
-          seats: seatPayload,
-        })
-        done++
-      } catch { failed++ }
-      setProgress({ done: done + failed, total: previewDates.length, failed })
+    let done = 0, failed = 0, numIdx = 0
+    for (const dateStr of effectiveDates) {
+      for (const timeStr of timeSlotsPerDay) {
+        const depTime = `${dateStr}T${timeStr}`
+        const flightNum = numPool[numIdx++]
+        try {
+          await createFlight({
+            flight_number: flightNum,
+            airline_id: form.airline_id,
+            departure_airport_id: form.departure_airport_id,
+            arrival_airport_id: form.arrival_airport_id,
+            departure_time: depTime,
+            arrival_time: addMinsToISO(depTime, durMins),
+            duration_minutes: durMins,
+            seats: seatPayload,
+          })
+          done++
+        } catch { failed++ }
+        setProgress({ done: done + failed, total: totalFlights, failed })
+      }
     }
 
     setCreating(false)
-    setResult({ done, failed, total: previewDates.length, flightNum: form.flight_number, start: form.start_date, end: form.end_date })
+    setResult({ done, failed, total: totalFlights, start: form.start_date, end: form.end_date, firstNum: numPool[0], lastNum: numPool[numIdx - 1] })
   }
 
   // ── Progress screen ──────────────────────────────────────────────────────────
@@ -226,7 +489,7 @@ export default function SchedulesPage() {
         </div>
         <div className="page-content">
           <div style={{ maxWidth: 480, margin: '60px auto', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>
+            <div style={{ fontSize: 48, fontWeight: 700, color: 'var(--accent)', lineHeight: 1 }}>
               {progress?.done ?? 0}
             </div>
             <div style={{ fontSize: 15, color: 'var(--text-secondary)', margin: '6px 0 24px' }}>
@@ -234,7 +497,7 @@ export default function SchedulesPage() {
             </div>
             <div style={{ background: 'var(--border)', borderRadius: 8, height: 12, overflow: 'hidden', margin: '0 0 12px' }}>
               <div style={{
-                background: 'var(--primary)', height: 12, borderRadius: 8,
+                background: 'var(--accent)', height: 12, borderRadius: 8,
                 width: `${pct}%`, transition: 'width 0.15s ease',
               }} />
             </div>
@@ -268,14 +531,15 @@ export default function SchedulesPage() {
               {result.failed === 0 ? 'Tạo lịch bay thành công!' : 'Hoàn tất với một số lỗi'}
             </div>
             <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 28 }}>
-              <strong>{result.done}</strong> chuyến bay <strong>{result.flightNum}</strong> đã được tạo
+              <strong>{result.done}</strong> chuyến bay đã được tạo
+              {result.firstNum && <> — số hiệu từ <strong>{result.firstNum}</strong> đến <strong>{result.lastNum}</strong></>}
               <br/>từ <strong>{result.start}</strong> đến <strong>{result.end}</strong>
               {result.failed > 0 && (
-                <><br/><span style={{ color: 'var(--danger)' }}>{result.failed} chuyến bị lỗi (có thể đã tồn tại hoặc dữ liệu không hợp lệ)</span></>
+                <><br/><span style={{ color: 'var(--danger)' }}>{result.failed} chuyến bị lỗi (có thể số hiệu trùng hoặc dữ liệu không hợp lệ)</span></>
               )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-              <button className="btn btn-secondary" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => { setResult(null); setForm(emptyForm()); setFlightNumAuto(true) }}>
+              <button className="btn btn-secondary" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => { setResult(null); setForm(emptyForm()); loadFlights() }}>
                 <LuRotateCcw size={14}/> Tạo lịch mới
               </button>
               <button className="btn btn-primary" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => navigate('/flights')}>
@@ -305,241 +569,575 @@ export default function SchedulesPage() {
           </div>
         )}
 
-        {/* ── Section 1: Thông tin cơ bản ── */}
-        <div className="card" style={{ marginBottom: 16, padding: '20px 20px 4px' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 16, color: 'var(--text-primary)' }}>
-            Thông tin chuyến bay
-          </div>
+        <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
 
-          {routeWarning && (
-            <div style={{ display:'flex', gap:8, padding:'10px 12px', marginBottom:12, background:'var(--warning-bg)', border:'1px solid var(--warning)', borderRadius:6, fontSize:13 }}>
-              <LuTriangleAlert size={15} style={{ color:'var(--warning)', flexShrink:0, marginTop:1 }}/>
-              <span style={{ color:'var(--warning)' }}>{routeWarning}</span>
-            </div>
-          )}
+          {/* ════════ LEFT: Creation form ════════ */}
+          <div style={{ flex:'1 1 auto', minWidth:0 }}>
 
-          <div className="form-grid">
-            {/* Flight number */}
-            <div className="form-group">
-              <label className="form-label">
-                Số hiệu bay *
-                <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>
-                  {flightNumAuto ? '— tự động' : '— tùy chỉnh'}
-                </span>
-              </label>
-              <div style={{ display:'flex', gap:6 }}>
-                <input
-                  className="form-control" value={form.flight_number} placeholder="VJ123"
-                  onChange={e => sf('flight_number', e.target.value)}
-                  readOnly={flightNumAuto}
-                  style={flightNumAuto ? { background:'var(--bg-input)', color:'var(--text-secondary)', cursor:'default' } : {}}
-                />
-                {flightNumAuto
-                  ? <button type="button" className="btn btn-secondary btn-sm" style={{ whiteSpace:'nowrap' }} onClick={() => setFlightNumAuto(false)}>Sửa</button>
-                  : <button type="button" className="btn btn-secondary btn-sm" title="Tự động sinh lại" onClick={() => { if (selectedAirlineCode) sf('flight_number', autoGenFlightNum(selectedAirlineCode, flights)); setFlightNumAuto(true) }}><LuRefreshCw size={13}/></button>
-                }
+            {/* ── Section 1: Thông tin cơ bản ── */}
+            <div className="card" style={{ marginBottom: 16, padding: '20px 20px 12px' }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, color: 'var(--text-primary)' }}>
+                Thông tin chuyến bay
               </div>
-              {flightNumAuto && !form.airline_id && (
-                <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>Chọn hãng bay để tự sinh số hiệu</div>
+
+              {/* ★ Chú thích nổi bật: 24 chuyến/ngày */}
+              <div style={{
+                display:'flex', gap:8, alignItems:'flex-start', padding:'10px 14px', marginBottom:14,
+                background:'rgba(14,129,205,0.08)', border:'1px solid var(--accent)',
+                borderRadius:8, fontSize:13,
+              }}>
+                <span style={{ color:'var(--accent)', fontWeight:700, fontSize:16, lineHeight:1, flexShrink:0 }}>ℹ</span>
+                <div style={{ color:'var(--accent)', lineHeight:1.6 }}>
+                  Hệ thống sẽ <strong>tự động tạo 24 chuyến/ngày</strong> (00:00, 01:00, ... 23:00) cho mỗi ngày phù hợp trong khoảng đã chọn. Giá vé sẽ dao động theo khung giờ (cao điểm, thấp điểm).
+                </div>
+              </div>
+
+              {routeWarning && (
+                <div style={{ display:'flex', gap:8, padding:'10px 12px', marginBottom:12, background:'var(--warning-bg)', border:'1px solid var(--warning)', borderRadius:6, fontSize:13 }}>
+                  <LuTriangleAlert size={15} style={{ color:'var(--warning)', flexShrink:0, marginTop:1 }}/>
+                  <span style={{ color:'var(--warning)' }}>{routeWarning}</span>
+                </div>
               )}
-            </div>
 
-            {/* Airline */}
-            <div className="form-group">
-              <label className="form-label">Hãng bay *</label>
-              <select className="form-control" value={form.airline_id} onChange={e => handleAirlineChange(e.target.value)}>
-                <option value="">-- Chọn hãng --</option>
-                {airlines.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
-              </select>
-            </div>
-
-            {/* Airports */}
-            <div className="form-group">
-              <label className="form-label">Sân bay đi *</label>
-              <select className="form-control" value={form.departure_airport_id} onChange={e => sf('departure_airport_id', e.target.value)}>
-                <option value="">-- Chọn --</option>
-                {airports.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Sân bay đến *</label>
-              <select className="form-control" value={form.arrival_airport_id} onChange={e => sf('arrival_airport_id', e.target.value)}>
-                <option value="">-- Chọn --</option>
-                {airports.map(a => <option key={a.id} value={a.id}>{a.name} ({a.code})</option>)}
-              </select>
-            </div>
-
-            {/* Departure time */}
-            <div className="form-group">
-              <label className="form-label">Giờ khởi hành hàng ngày * <span style={{ fontWeight:400, color:'var(--text-muted)', fontSize:11 }}>(ICT)</span></label>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <input className="form-control" type="number" min="0" max="23" value={form.dep_hour} onChange={e => sf('dep_hour', e.target.value)} style={{ width:80 }} placeholder="08"/>
-                <span style={{ fontSize:15, fontWeight:600 }}>:</span>
-                <input className="form-control" type="number" min="0" max="59" value={form.dep_minute} onChange={e => sf('dep_minute', e.target.value)} style={{ width:80 }} placeholder="00"/>
+              {/* ★ Số hiệu bay tự động theo từng chuyến */}
+              <div style={{
+                display:'flex', gap:8, alignItems:'flex-start', padding:'9px 13px', marginBottom:4,
+                background:'rgba(14,129,205,0.06)', border:'1px solid rgba(14,129,205,0.3)',
+                borderRadius:7, fontSize:12,
+              }}>
+                <span style={{ color:'var(--accent)', fontWeight:700, fontSize:15, lineHeight:1, flexShrink:0 }}>✦</span>
+                <span style={{ color:'var(--accent)', lineHeight:1.6 }}>
+                  <strong>Số hiệu bay được gán tự động và duy nhất cho từng chuyến</strong> (VD: VJ100, VJ101, ...).
+                  Số hiệu chỉ được tái sử dụng sau khi chuyến bay tương ứng kết thúc hoặc bị hủy.
+                </span>
               </div>
-            </div>
 
-            {/* Duration */}
-            <div className="form-group">
-              <label className="form-label">Thời gian bay *</label>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <input className="form-control" type="number" min="0" max="24" value={form.dur_h} onChange={e => sf('dur_h', e.target.value)} style={{ width:80 }} placeholder="1"/>
-                <span style={{ fontSize:13, color:'var(--text-secondary)' }}>giờ</span>
-                <input className="form-control" type="number" min="0" value={form.dur_m} onChange={e => sf('dur_m', e.target.value)} style={{ width:80 }} placeholder="30"/>
-                <span style={{ fontSize:13, color:'var(--text-secondary)' }}>phút</span>
-                {durMins > 0 && <span style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>= {durMins} phút</span>}
-              </div>
-            </div>
-          </div>
-        </div>
+              <div className="form-grid">
+                {/* Airline */}
+                <div className="form-group">
+                  <label className="form-label">Hãng bay *</label>
+                  <SearchSelect
+                    value={form.airline_id}
+                    onChange={handleAirlineChange}
+                    options={airlines.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))}
+                    placeholder="-- Chọn hãng --"
+                  />
+                  <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)' }}>
+                    Hệ số giá được xác định theo hãng bay. Bắt buộc để tự sinh số hiệu.
+                  </div>
+                </div>
 
-        {/* ── Section 2: Lịch trình ── */}
-        <div className="card" style={{ marginBottom: 16, padding: '20px 20px 4px' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 16, color: 'var(--text-primary)' }}>
-            Lịch trình
-          </div>
-          <div className="form-grid">
-            {/* Date range */}
-            <div className="form-group">
-              <label className="form-label">Từ ngày *</label>
-              <input className="form-control" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)}/>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Đến ngày *</label>
-              <input className="form-control" type="date" value={form.end_date} min={form.start_date} onChange={e => sf('end_date', e.target.value)}/>
-            </div>
-
-            {/* Days of week */}
-            <div className="form-group full">
-              <label className="form-label">Các ngày trong tuần *</label>
-              <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-                {DAYS_OF_WEEK.map(d => (
-                  <button key={d.value} type="button" onClick={() => toggleDay(d.value)} style={{
-                    padding:'6px 16px', borderRadius:20, border:'1px solid', fontSize:13, fontWeight:500, cursor:'pointer',
-                    background: form.days_of_week.includes(d.value) ? 'var(--primary)' : 'var(--bg-input)',
-                    color:      form.days_of_week.includes(d.value) ? '#fff' : 'var(--text-secondary)',
-                    borderColor:form.days_of_week.includes(d.value) ? 'var(--primary)' : 'var(--border)',
-                    transition: 'all 0.12s',
-                  }}>
-                    {d.label}
-                  </button>
-                ))}
-                <button type="button" className="btn btn-secondary btn-sm" style={{ borderRadius:20 }} onClick={() => setForm(p => ({ ...p, days_of_week: [0,1,2,3,4,5,6] }))}>Tất cả</button>
-                <button type="button" className="btn btn-secondary btn-sm" style={{ borderRadius:20 }} onClick={() => setForm(p => ({ ...p, days_of_week: [1,2,3,4,5] }))}>T2 – T6</button>
-              </div>
-            </div>
-
-            {/* Preview */}
-            {form.start_date && form.end_date && form.days_of_week.length > 0 && (
-              <div className="form-group full">
-                <div style={{
-                  display:'flex', alignItems:'center', gap:12, padding:'12px 16px',
-                  background: previewDates.length > 0 ? 'var(--success-bg)' : 'var(--bg-input)',
-                  border: `1px solid ${previewDates.length > 0 ? 'var(--success)' : 'var(--border)'}`,
-                  borderRadius:8, fontSize:14,
-                }}>
-                  {previewDates.length > 0 ? (
-                    <>
-                      <span style={{ fontSize:20 }}>✓</span>
-                      <div>
-                        <span style={{ fontWeight:600, color:'var(--success)' }}>Sẽ tạo {previewDates.length} chuyến bay</span>
-                        <span style={{ color:'var(--text-muted)', fontSize:12, marginLeft:8 }}>
-                          {form.start_date} → {form.end_date}
-                        </span>
-                        {previewDates.length >= 500 && (
-                          <span style={{ color:'var(--warning)', fontSize:12, marginLeft:8 }}>⚠ Giới hạn 500/lần</span>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <span style={{ color:'var(--text-muted)' }}>Không có ngày nào khớp trong khoảng đã chọn</span>
+                {/* Airports + swap */}
+                <div className="form-group full">
+                  <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+                    <div style={{ flex:1 }}>
+                      <label className="form-label">Sân bay đi *</label>
+                      <SearchSelect
+                        value={form.departure_airport_id}
+                        onChange={v => sf('departure_airport_id', v)}
+                        options={airports.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))}
+                      />
+                    </div>
+                    <button
+                      type="button" title="Đảo chiều" onClick={swapAirports}
+                      style={{
+                        height:38, width:38, borderRadius:6, border:'1px solid var(--border)',
+                        background:'var(--bg-input)', cursor:'pointer', flexShrink:0,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        color:'var(--text-secondary)',
+                      }}
+                    >
+                      <LuArrowLeftRight size={16}/>
+                    </button>
+                    <div style={{ flex:1 }}>
+                      <label className="form-label">Sân bay đến *</label>
+                      <SearchSelect
+                        value={form.arrival_airport_id}
+                        onChange={v => sf('arrival_airport_id', v)}
+                        options={airports.map(a => ({ value: a.id, label: `${a.name} (${a.code})` }))}
+                      />
+                    </div>
+                  </div>
+                  {/* ★ Ghi chú nổi bật tuyến đường */}
+                  {depCode && arrCode && (
+                    <div style={{ fontSize:11, marginTop:6, color: routeWarning ? 'var(--warning)' : 'var(--text-muted)' }}>
+                      {routeWarning
+                        ? '⚠ Kiểm tra lại tuyến đường — có thể hãng không khai thác nội địa Việt Nam.'
+                        : `Tuyến ${depCode} → ${arrCode} đã xác nhận. Sân bay đi ≠ sân bay đến.`
+                      }
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* ── Section 3: Giá vé ── */}
-        <div className="card" style={{ marginBottom: 24, padding: '20px 20px 4px' }}>
-          <button type="button" onClick={() => setSeatsOpen(p => !p)} style={{
-            display:'flex', alignItems:'center', gap:6, background:'none', border:'none',
-            cursor:'pointer', padding:'0 0 16px', color:'var(--text-primary)', fontSize:14, fontWeight:600, width:'100%', textAlign:'left',
-          }}>
-            {seatsOpen ? '▾' : '▸'} Giá vé và cấu hình ghế
-            <span style={{ fontWeight:400, fontSize:12, color:'var(--text-muted)', marginLeft:4 }}>(áp dụng cho tất cả chuyến)</span>
-          </button>
-
-          {/* Price suggestion */}
-          {priceSuggestion && (
-            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', marginBottom:12, background:'var(--bg-input)', border:'1px solid var(--border)', borderRadius:6, fontSize:12, flexWrap:'wrap' }}>
-              <span style={{ color:'var(--text-secondary)' }}>Gợi ý giá ({selectedAirlineCode}):</span>
-              <span>Economy <strong>{fmtPrice(priceSuggestion.economy)}</strong></span>
-              <span style={{ color:'var(--text-muted)' }}>·</span>
-              <span>Business <strong>{fmtPrice(priceSuggestion.business)}</strong></span>
-              <span style={{ color:'var(--text-muted)' }}>·</span>
-              <span>First <strong>{fmtPrice(priceSuggestion.first)}</strong></span>
-              <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft:'auto' }} onClick={handleApplyPrices}>
-                Áp dụng vào ghế
-              </button>
-            </div>
-          )}
-
-          {seatsOpen && form.seats.map((seat, idx) => (
-            <div className="seat-row" key={seat.class}>
-              <div className="seat-row-header"><span>{SEAT_CLASS_LABELS[seat.class]}</span></div>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">Số ghế</label>
-                  <input className="form-control" type="number" value={seat.total_seats} onChange={e => setSeatField(idx, 'total_seats', e.target.value)} placeholder="150" min="1"/>
-                </div>
+                {/* Duration */}
                 <div className="form-group full">
-                  <label className="form-label">Giá cơ bản (VND)</label>
-                  <input className="form-control" type="number" value={seat.base_price} onChange={e => setSeatField(idx, 'base_price', e.target.value)} placeholder="1500000"/>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Ký gửi (kg)</label>
-                  <input className="form-control" type="number" value={seat.baggage_included_kg} onChange={e => setSeatField(idx, 'baggage_included_kg', e.target.value)}/>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Xách tay (kg)</label>
-                  <input className="form-control" type="number" value={seat.carry_on_kg} onChange={e => setSeatField(idx, 'carry_on_kg', e.target.value)}/>
-                </div>
-                <div className="form-group full">
-                  <label className="form-label">Hành lý mua thêm</label>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-                    {BAGGAGE_PACKAGE_KGS.map(kg => (
-                      <div key={kg}>
-                        <label className="form-label" style={{ fontSize:11 }}>{kg}kg (VND)</label>
-                        <input className="form-control" type="number" value={seat.extra_baggage_options?.[kg] ?? '0'} onChange={e => setSeatBaggageOption(idx, kg, e.target.value)}/>
-                      </div>
-                    ))}
+                  <label className="form-label">Thời gian bay *</label>
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <input className="form-control" type="number" min="0" max="24" value={form.dur_h} onChange={e => { sf('dur_h', e.target.value); setDurCalcInfo(null) }} style={{ width:80 }} placeholder="1"/>
+                    <span style={{ fontSize:13, color:'var(--text-secondary)' }}>giờ</span>
+                    <input className="form-control" type="number" min="0" value={form.dur_m} onChange={e => { handleDurMChange(e.target.value); setDurCalcInfo(null) }} style={{ width:80 }} placeholder="30"/>
+                    <span style={{ fontSize:13, color:'var(--text-secondary)' }}>phút</span>
+                    {durMins > 0 && <span style={{ fontSize:12, color:'var(--text-muted)', whiteSpace:'nowrap' }}>= {durMins} phút</span>}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ display:'flex', alignItems:'center', gap:4, whiteSpace:'nowrap' }}
+                      disabled={!form.departure_airport_id || !form.arrival_airport_id}
+                      onClick={handleAutoCalcDuration}
+                      title="Tự động ước tính dựa vào khoảng cách thực tế giữa hai sân bay"
+                    >
+                      <LuRefreshCw size={12}/> Tự tính
+                    </button>
+                  </div>
+                  {durCalcInfo && (
+                    <div style={{ fontSize:11, marginTop:5, lineHeight:1.5, color: durCalcInfo.error ? 'var(--danger)' : 'var(--success)' }}>
+                      {durCalcInfo.error
+                        ? `⚠ ${durCalcInfo.error}`
+                        : `✓ Khoảng cách ~${durCalcInfo.km.toLocaleString('vi-VN')} km → ước tính ${Math.floor(durCalcInfo.mins / 60)}h${durCalcInfo.mins % 60 > 0 ? ` ${durCalcInfo.mins % 60}m` : ''} (đã tính thời gian lăn bánh)`
+                      }
+                    </div>
+                  )}
+                  {/* ★ Ghi chú thời gian */}
+                  <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)' }}>
+                    Thời gian bay thực tế trên không — <strong style={{ color:'var(--accent)' }}>không tính</strong> thời gian chờ ở sân bay. Nhập chỉ phút (VD: 90) sẽ tự đổi sang giờ + phút.
                   </div>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
 
-        {/* ── Action bar ── */}
-        <div style={{ display:'flex', justifyContent:'flex-end', gap:12, paddingBottom:32 }}>
-          <button
-            className="btn btn-secondary"
-            onClick={() => { setForm(emptyForm()); setFlightNumAuto(true); setError('') }}
-          >
-            Đặt lại
-          </button>
-          <button
-            className="btn btn-primary"
-            disabled={!previewDates.length}
-            onClick={handleCreate}
-            style={{ display:'flex', alignItems:'center', gap:6 }}
-          >
-            <LuCalendarDays size={14}/>
-            {previewDates.length > 0 ? `Tạo ${previewDates.length} chuyến bay` : 'Tạo lịch bay'}
-          </button>
-        </div>
+            {/* ── Section 2: Lịch trình ── */}
+            <div className="card" style={{ marginBottom: 16, padding: '20px 20px 12px' }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, color: 'var(--text-primary)' }}>
+                Lịch trình
+              </div>
+              <div className="form-grid">
+                {/* Date range */}
+                <div className="form-group">
+                  <label className="form-label">Từ ngày *</label>
+                  <input className="form-control" type="date" value={form.start_date} onChange={e => sf('start_date', e.target.value)}/>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Đến ngày *</label>
+                  <input className="form-control" type="date" value={form.end_date} min={form.start_date} onChange={e => sf('end_date', e.target.value)}/>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    Số chuyến/ngày
+                    <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>— để trống = tạo đủ 24 chuyến/ngày</span>
+                  </label>
+                  <input
+                    className="form-control" type="number" min="1" max="24"
+                    value={form.flights_per_day}
+                    onChange={e => sf('flights_per_day', e.target.value)}
+                    placeholder="24"
+                  />
+                  {/* ★ Ghi chú nổi bật */}
+                  <div style={{ fontSize:11, marginTop:4, color:'var(--accent)', fontWeight:500 }}>
+                    Mỗi ngày trong khoảng đã chọn sẽ tạo đúng số chuyến này.
+                    Các giờ được phân bổ đều trong ngày (0 – 23h).
+                    Tổng = số ngày × số chuyến/ngày.
+                  </div>
+                </div>
+
+                {/* Days of week */}
+                <div className="form-group full">
+                  <label className="form-label">
+                    Các ngày trong tuần *
+                    <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>— chỉ những ngày được chọn mới tạo chuyến</span>
+                  </label>
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                    {DAYS_OF_WEEK.map(d => (
+                      <button key={d.value} type="button" onClick={() => toggleDay(d.value)} style={{
+                        padding:'6px 16px', borderRadius:20, border:'1px solid', fontSize:13, fontWeight:500, cursor:'pointer',
+                        background: form.days_of_week.includes(d.value) ? 'var(--accent)' : 'var(--bg-input)',
+                        color:      form.days_of_week.includes(d.value) ? '#fff' : 'var(--text-secondary)',
+                        borderColor:form.days_of_week.includes(d.value) ? 'var(--accent)' : 'var(--border)',
+                        transition: 'all 0.12s',
+                      }}>
+                        {d.label}
+                      </button>
+                    ))}
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ borderRadius:20 }} onClick={() => setForm(p => ({ ...p, days_of_week: [0,1,2,3,4,5,6] }))}>Tất cả</button>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ borderRadius:20 }} onClick={() => setForm(p => ({ ...p, days_of_week: [1,2,3,4,5] }))}>T2 – T6</button>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {form.start_date && form.end_date && form.days_of_week.length > 0 && (
+                  <div className="form-group full">
+                    <div style={{
+                      display:'flex', alignItems:'center', gap:12, padding:'12px 16px',
+                      background: previewDates.length > 0 ? 'var(--success-bg)' : 'var(--bg-input)',
+                      border: `1px solid ${previewDates.length > 0 ? 'var(--success)' : 'var(--border)'}`,
+                      borderRadius:8, fontSize:14,
+                    }}>
+                      {effectiveDates.length > 0 ? (
+                        <>
+                          <span style={{ fontSize:20 }}>✓</span>
+                          <div>
+                            <span style={{ fontWeight:600, color:'var(--success)' }}>
+                              Sẽ tạo {totalToCreate} chuyến bay
+                            </span>
+                            <span style={{ color:'var(--text-muted)', fontSize:12, marginLeft:8 }}>
+                              ({effectiveDates.length} ngày × {timeSlotsPerDay.length} chuyến/ngày)
+                            </span>
+                            {previewDates.length >= 500 && (
+                              <span style={{ color:'var(--warning)', fontSize:12, marginLeft:8 }}>⚠ Giới hạn 500/lần</span>
+                            )}
+                            {poolShortfall && (
+                              <span style={{ color:'var(--danger)', fontSize:12, marginLeft:8 }}>
+                                ⚠ Chỉ còn {numPoolPreview.length} số hiệu khả dụng — cần {totalToCreate}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <span style={{ color:'var(--text-muted)' }}>Không có ngày nào khớp trong khoảng đã chọn</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Section 3: Giá vé ── */}
+            <div className="card" style={{ marginBottom: 24, padding: '20px 20px 4px' }}>
+              <button type="button" onClick={() => setSeatsOpen(p => !p)} style={{
+                display:'flex', alignItems:'center', gap:6, background:'none', border:'none',
+                cursor:'pointer', padding:'0 0 16px', color:'var(--text-primary)', fontSize:14, fontWeight:600, width:'100%', textAlign:'left',
+              }}>
+                {seatsOpen ? '▾' : '▸'} Giá vé và cấu hình ghế
+                <span style={{ fontWeight:400, fontSize:12, color:'var(--text-muted)', marginLeft:4 }}>(áp dụng cho tất cả chuyến)</span>
+              </button>
+
+              {/* ★ Ghi chú ghế nổi bật */}
+              <div style={{
+                display:'flex', gap:8, alignItems:'flex-start', padding:'8px 12px', marginBottom:10,
+                background:'rgba(250,173,20,0.08)', border:'1px solid var(--warning)',
+                borderRadius:6, fontSize:12,
+              }}>
+                <span style={{ color:'var(--warning)', fontWeight:700, flexShrink:0 }}>!</span>
+                <span style={{ color:'var(--warning)' }}>
+                  Giới hạn ghế: <strong>Economy ≤ 200</strong> · <strong>Business ≤ 40</strong> · <strong>First ≤ 20</strong>.
+                  Giá gợi ý tính theo hãng + thời gian bay — chưa tính hệ số giờ cao điểm (biến động trong 24 chuyến/ngày).
+                </span>
+              </div>
+
+              {/* Price suggestion */}
+              {priceSuggestion && (
+                <div style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', marginBottom:12, background:'var(--bg-input)', border:'1px solid var(--border)', borderRadius:6, fontSize:12, flexWrap:'wrap' }}>
+                  <span style={{ color:'var(--text-secondary)' }}>
+                    Gợi ý giá cơ bản ({selectedAirlineCode || 'chưa chọn hãng'}):
+                  </span>
+                  <span>Economy <strong>{fmtPrice(priceSuggestion.economy)}</strong></span>
+                  <span style={{ color:'var(--text-muted)' }}>·</span>
+                  <span>Business <strong>{fmtPrice(priceSuggestion.business)}</strong></span>
+                  <span style={{ color:'var(--text-muted)' }}>·</span>
+                  <span>First <strong>{fmtPrice(priceSuggestion.first)}</strong></span>
+                  <button type="button" className="btn btn-secondary btn-sm" style={{ marginLeft:'auto' }} onClick={handleApplyPrices}>
+                    Áp dụng vào ghế
+                  </button>
+                </div>
+              )}
+
+              {seatsOpen && form.seats.map((seat, idx) => (
+                <div className="seat-row" key={seat.class}>
+                  <div className="seat-row-header"><span>{SEAT_CLASS_LABELS[seat.class]}</span></div>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label className="form-label">Số ghế <span style={{ color:'var(--accent)', fontSize:11 }}>(tối đa {SEAT_MAX[seat.class]})</span></label>
+                      <input className="form-control" type="number" value={seat.total_seats} onChange={e => setSeatField(idx, 'total_seats', e.target.value)} placeholder={String(SEAT_MAX[seat.class])} min="1" max={SEAT_MAX[seat.class]}/>
+                    </div>
+                    <div className="form-group full">
+                      <label className="form-label">Giá cơ bản (VND)</label>
+                      <input className="form-control" type="number" value={seat.base_price} onChange={e => setSeatField(idx, 'base_price', e.target.value)} placeholder="VD: 1500000"/>
+                      <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)', lineHeight:1.6 }}>
+                        <span style={{ color:'var(--success)', fontWeight:600 }}>✓ Không bắt buộc.</span>{' '}
+                        Để trống nếu chưa xác định giá — có thể cập nhật sau trong{' '}
+                        <strong>Quản lý chuyến bay</strong>. Dùng nút{' '}
+                        <span style={{ color:'var(--accent)', fontWeight:500 }}>Áp dụng vào ghế</span>{' '}
+                        ở trên để điền giá gợi ý tự động.
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Ký gửi (kg)</label>
+                      <input className="form-control" type="number" value={seat.baggage_included_kg} onChange={e => setSeatField(idx, 'baggage_included_kg', e.target.value)}/>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Xách tay (kg)</label>
+                      <input className="form-control" type="number" value={seat.carry_on_kg} onChange={e => setSeatField(idx, 'carry_on_kg', e.target.value)}/>
+                    </div>
+                    <div className="form-group full">
+                      <label className="form-label">Hành lý mua thêm</label>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+                        {BAGGAGE_PACKAGE_KGS.map(kg => (
+                          <div key={kg}>
+                            <label className="form-label" style={{ fontSize:11 }}>{kg}kg (VND)</label>
+                            <input className="form-control" type="number" value={seat.extra_baggage_options?.[kg] ?? '0'} onChange={e => setSeatBaggageOption(idx, kg, e.target.value)}/>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Action bar ── */}
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:12, paddingBottom:32 }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => { setForm(emptyForm()); setFlightNumAuto(true); setError('') }}
+              >
+                Đặt lại
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!effectiveDates.length || poolShortfall}
+                onClick={handleCreate}
+                style={{ display:'flex', alignItems:'center', gap:6 }}
+              >
+                <LuCalendarDays size={14}/>
+                {effectiveDates.length > 0
+                  ? `Tạo ${totalToCreate} chuyến bay`
+                  : 'Tạo lịch bay'}
+              </button>
+            </div>
+
+          </div>{/* end LEFT column */}
+
+          {/* ════════ RIGHT: Schedule list ════════ */}
+          <div style={{ width: 360, flexShrink: 0, position: 'sticky', top: 16 }}>
+            <div className="card" style={{ padding: '16px 16px 8px' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+                <div style={{ fontWeight:600, fontSize:14, color:'var(--text-primary)', display:'flex', alignItems:'center', gap:6 }}>
+                  <LuPlane size={14}/> Danh sách lịch bay
+                </div>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ display:'flex', alignItems:'center', gap:4 }}
+                  onClick={loadFlights}
+                  title="Tải lại"
+                >
+                  <LuRefreshCw size={12}/>
+                </button>
+              </div>
+
+              {/* Search bar */}
+              <div style={{ position:'relative', marginBottom:10 }}>
+                <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', pointerEvents:'none' }}>
+                  <LuSearch size={13}/>
+                </span>
+                <input
+                  className="form-control"
+                  style={{ paddingLeft:30, fontSize:13 }}
+                  placeholder="Tìm số hiệu, sân bay, hãng..."
+                  value={groupSearch}
+                  onChange={e => setGroupSearch(e.target.value)}
+                />
+              </div>
+
+              {/* Stats summary */}
+              <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:10 }}>
+                {scheduleGroups.length} lịch bay · {flights.length} chuyến tổng
+              </div>
+
+              {/* List */}
+              <div style={{ maxHeight: 'calc(100vh - 260px)', overflowY:'auto' }}>
+                {filteredGroups.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'32px 0', color:'var(--text-muted)', fontSize:13 }}>
+                    {scheduleGroups.length === 0 ? 'Chưa có lịch bay nào' : 'Không tìm thấy'}
+                  </div>
+                ) : filteredGroups.map(group => {
+                  const state    = getGroupState(group)
+                  const dateRange = getGroupDateRange(group)
+                  const stats    = getGroupStats(group)
+                  return (
+                    <div key={group.flight_number} style={{
+                      border:'1px solid var(--border)', borderRadius:8, marginBottom:8, padding:'10px 12px',
+                      background: state === 'cancelled' ? 'rgba(0,0,0,0.02)' : 'var(--bg-card)',
+                      opacity: state === 'cancelled' ? 0.75 : 1,
+                    }}>
+                      {/* Header row */}
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                        <span style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)', letterSpacing:0.3 }}>
+                          {group.flight_number}
+                        </span>
+                        {/* State badge */}
+                        {state === 'active'    && <span className="badge badge-success" style={{ fontSize:10 }}>Đang chạy</span>}
+                        {state === 'paused'    && <span className="badge badge-warning" style={{ fontSize:10 }}>Tạm dừng</span>}
+                        {state === 'cancelled' && <span className="badge badge-danger"  style={{ fontSize:10 }}>Đã hủy</span>}
+                      </div>
+
+                      {/* Route + airline */}
+                      <div style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:3 }}>
+                        <strong>{group.dep_code}</strong> → <strong>{group.arr_code}</strong>
+                        <span style={{ color:'var(--text-muted)', marginLeft:6 }}>· {group.airline_name}</span>
+                      </div>
+
+                      {/* Date range */}
+                      {dateRange && (
+                        <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:6 }}>
+                          {dateRange.from} – {dateRange.to}
+                        </div>
+                      )}
+
+                      {/* Stats chips */}
+                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                        <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'var(--bg-input)', color:'var(--text-muted)' }}>
+                          Tổng: {stats.total}
+                        </span>
+                        {stats.scheduled > 0 && (
+                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'var(--success-bg)', color:'var(--success)' }}>
+                            Lên lịch: {stats.scheduled}
+                          </span>
+                        )}
+                        {stats.paused > 0 && (
+                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'var(--warning-bg)', color:'var(--warning)' }}>
+                            Ẩn: {stats.paused}
+                          </span>
+                        )}
+                        {stats.cancelled > 0 && (
+                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(220,53,69,0.1)', color:'var(--danger)' }}>
+                            Hủy: {stats.cancelled}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div style={{ display:'flex', gap:6 }}>
+                        {state === 'cancelled' ? (
+                          // Re-create button when all cancelled
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}
+                            onClick={() => prefillFromGroup(group)}
+                            title="Điền lại form với thông tin lịch này"
+                          >
+                            <LuCopy size={11}/> Tạo lại lịch tương tự
+                          </button>
+                        ) : (
+                          <>
+                            {/* Pause / Resume */}
+                            {state === 'paused' ? (
+                              <button
+                                className="btn btn-sm"
+                                style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'var(--success-bg)', color:'var(--success)', border:'1px solid var(--success)' }}
+                                onClick={() => setConfirmAction({ type: 'resume', group })}
+                              >
+                                <LuPlay size={11}/> Tiếp tục
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn-sm"
+                                style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'var(--warning-bg)', color:'var(--warning)', border:'1px solid var(--warning)' }}
+                                onClick={() => setConfirmAction({ type: 'pause', group })}
+                              >
+                                <LuPause size={11}/> Tạm dừng
+                              </button>
+                            )}
+
+                            {/* Cancel */}
+                            {stats.cancellable > 0 && (
+                              <button
+                                className="btn btn-sm"
+                                style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'rgba(220,53,69,0.08)', color:'var(--danger)', border:'1px solid var(--danger)' }}
+                                onClick={() => setConfirmAction({ type: 'cancel', group })}
+                              >
+                                <LuBan size={11}/> Hủy lịch
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>{/* end RIGHT column */}
+
+        </div>{/* end two-column flex */}
       </div>
+
+      {/* ════════ Confirmation Modal ════════ */}
+      {confirmAction && (
+        <div
+          className="modal-overlay"
+          onClick={e => !actionLoading && e.target === e.currentTarget && setConfirmAction(null)}
+        >
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                {confirmAction.type === 'cancel' && <><LuBan size={16} style={{ color:'var(--danger)' }}/> Xác nhận hủy lịch bay</>}
+                {confirmAction.type === 'pause'  && <><LuPause size={16} style={{ color:'var(--warning)' }}/> Xác nhận tạm dừng</>}
+                {confirmAction.type === 'resume' && <><LuPlay size={16} style={{ color:'var(--success)' }}/> Xác nhận tiếp tục</>}
+              </div>
+              {!actionLoading && (
+                <button className="modal-close" onClick={() => setConfirmAction(null)}><LuX size={18}/></button>
+              )}
+            </div>
+
+            {/* Flight info */}
+            <div style={{ padding:'10px 0 6px', borderBottom:'1px solid var(--border)', marginBottom:14 }}>
+              <div style={{ fontWeight:700, fontSize:16 }}>{confirmAction.group.flight_number}</div>
+              <div style={{ fontSize:13, color:'var(--text-secondary)', marginTop:2 }}>
+                {confirmAction.group.dep_code} → {confirmAction.group.arr_code} · {confirmAction.group.airline_name}
+              </div>
+            </div>
+
+            {/* Description */}
+            {confirmAction.type === 'cancel' && (
+              <div style={{ padding:'10px 14px', background:'rgba(220,53,69,0.08)', border:'1px solid var(--danger)', borderRadius:8, fontSize:13, marginBottom:16, lineHeight:1.7 }}>
+                <div style={{ color:'var(--danger)', fontWeight:600, marginBottom:4 }}>⚠ Hành động không thể hoàn tác</div>
+                Sẽ chuyển <strong>{getGroupStats(confirmAction.group).cancellable}</strong> chuyến bay có trạng thái "<em>scheduled / delayed</em>" thành "<em>cancelled</em>". Các chuyến đã khởi hành hoặc hoàn thành không bị ảnh hưởng.
+                <div style={{ marginTop:8, color:'var(--text-muted)', fontSize:11 }}>
+                  Sau khi hủy, bạn có thể dùng nút <strong>Tạo lại lịch tương tự</strong> nếu đổi ý.
+                </div>
+              </div>
+            )}
+            {confirmAction.type === 'pause' && (
+              <div style={{ padding:'10px 14px', background:'var(--warning-bg)', border:'1px solid var(--warning)', borderRadius:8, fontSize:13, marginBottom:16, lineHeight:1.7 }}>
+                <div style={{ color:'var(--warning)', fontWeight:600, marginBottom:4 }}>Tạm ẩn toàn bộ lịch</div>
+                Tất cả chuyến bay chưa hủy của lịch này sẽ bị <strong>ẩn</strong> khỏi kết quả tìm kiếm của hành khách. Bạn có thể <strong>tiếp tục lại</strong> bất cứ lúc nào.
+              </div>
+            )}
+            {confirmAction.type === 'resume' && (
+              <div style={{ padding:'10px 14px', background:'var(--success-bg)', border:'1px solid var(--success)', borderRadius:8, fontSize:13, marginBottom:16, lineHeight:1.7 }}>
+                <div style={{ color:'var(--success)', fontWeight:600, marginBottom:4 }}>Khôi phục hiển thị</div>
+                Tất cả chuyến bay đang bị ẩn của lịch này sẽ được <strong>hiển thị trở lại</strong> trong kết quả tìm kiếm.
+              </div>
+            )}
+
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+              <button
+                className="btn btn-secondary"
+                disabled={actionLoading}
+                onClick={() => setConfirmAction(null)}
+              >
+                Không, hủy bỏ
+              </button>
+              <button
+                className={`btn ${confirmAction.type === 'cancel' ? 'btn-danger' : confirmAction.type === 'pause' ? 'btn-warning' : 'btn-primary'}`}
+                style={confirmAction.type === 'pause' ? { background:'var(--warning)', color:'#fff', border:'none' } : {}}
+                disabled={actionLoading}
+                onClick={() => {
+                  if (confirmAction.type === 'cancel') handleCancelGroup(confirmAction.group)
+                  else if (confirmAction.type === 'pause') handlePauseGroup(confirmAction.group)
+                  else handleResumeGroup(confirmAction.group)
+                }}
+              >
+                {actionLoading
+                  ? 'Đang xử lý...'
+                  : confirmAction.type === 'cancel' ? 'Xác nhận hủy'
+                  : confirmAction.type === 'pause'  ? 'Xác nhận tạm dừng'
+                  : 'Xác nhận tiếp tục'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

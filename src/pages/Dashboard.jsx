@@ -74,19 +74,19 @@ const STATUS_BADGE = {
 
 const FLIGHT_STATUS_LABEL = {
   scheduled: 'Đã lên lịch',
+  delayed:   'Trễ giờ',
   boarding:  'Lên máy bay',
   departed:  'Đã khởi hành',
-  landed:    'Đã hạ cánh',
-  delayed:   'Trễ giờ',
+  arrived:   'Đã hạ cánh',
   cancelled: 'Đã huỷ',
   completed: 'Hoàn thành',
 }
 const FLIGHT_STATUS_BADGE = {
   scheduled: 'badge-info',
+  delayed:   'badge-warning',
   boarding:  'badge-warning',
   departed:  'badge-success',
-  landed:    'badge-success',
-  delayed:   'badge-danger',
+  arrived:   'badge-success',
   cancelled: 'badge-danger',
   completed: 'badge-muted',
 }
