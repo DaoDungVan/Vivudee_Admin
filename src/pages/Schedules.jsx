@@ -4,6 +4,7 @@ import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, 
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
+  LuChevronDown, LuChevronRight,
 } from 'react-icons/lu'
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
@@ -18,11 +19,10 @@ const DAYS_OF_WEEK = [
 
 const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
 const SEAT_CLASS_LABELS = { economy: 'Economy', business: 'Business', first: 'First Class' }
-const BAGGAGE_PACKAGE_KGS = [5, 10, 20]
 const SEAT_DEFAULTS = {
-  economy:  { total_seats: '200', baggage_included_kg: '23', carry_on_kg: '7',  extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  business: { total_seats: '40',  baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  first:    { total_seats: '20',  baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  economy:  { total_seats: '200', baggage_included_kg: '23', carry_on_kg: '7',  extra_baggage_price: '0' },
+  business: { total_seats: '40',  baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_price: '0' },
+  first:    { total_seats: '20',  baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_price: '0' },
 }
 const SEAT_MAX = { economy: 200, business: 40, first: 20 }
 
@@ -50,6 +50,14 @@ const getTimeMult = (hour) => {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// ~4.5% base_price per kg for economy, ~2.5% for business, 0 for first
+const autoExtraBagPrice = (basePrice, cls) => {
+  const p = Number(basePrice) || 0
+  if (!p || cls === 'first') return '0'
+  const ratio = cls === 'business' ? 0.025 : 0.045
+  return String(Math.max(5000, Math.round(p * ratio / 1000) * 1000))
+}
 
 const createSeat = (cls = 'economy') => ({ class: cls, total_seats: '', base_price: '', ...SEAT_DEFAULTS[cls] })
 const buildSeatFormList = () => SEAT_CLASS_ORDER.map(cls => createSeat(cls))
@@ -162,24 +170,29 @@ const estimateFlightMins = (km) => {
 const groupBySchedule = (flights) => {
   const map = new Map()
   for (const f of flights) {
-    const key = f.flight_number
+    const depCode = f.dep_code || f.departure_code || '?'
+    const arrCode = f.arr_code || f.arrival_code || '?'
+    const airCode = f.airline_code || '?'
+    const key = `${airCode}-${depCode}-${arrCode}`
     if (!map.has(key)) {
       map.set(key, {
-        flight_number: key,
-        airline_name: f.airline_name || f.airline_code || '?',
+        key,
+        airline_name: f.airline_name || airCode,
         airline_id: f.airline_id,
-        airline_code: f.airline_code || '',
-        dep_code: f.departure_code || f.dep_code || '?',
-        arr_code: f.arrival_code || f.arr_code || '?',
-        dep_id: f.departure_airport_id || f.dep_id || '',
-        arr_id: f.arrival_airport_id || f.arr_id || '',
+        airline_code: airCode,
+        dep_code: depCode,
+        arr_code: arrCode,
+        dep_id: f.dep_id || f.departure_airport_id || '',
+        arr_id: f.arr_id || f.arrival_airport_id || '',
         duration_minutes: f.duration_minutes,
         flights: [],
       })
     }
     map.get(key).flights.push(f)
   }
-  return [...map.values()].sort((a, b) => a.flight_number.localeCompare(b.flight_number))
+  return [...map.values()].sort((a, b) =>
+    a.airline_code.localeCompare(b.airline_code) || a.dep_code.localeCompare(b.dep_code)
+  )
 }
 
 const getGroupState = (group) => {
@@ -270,6 +283,7 @@ export default function SchedulesPage() {
   const [result, setResult]     = useState(null)
   // ── Schedule list state ──────────────────────────────────────────────────────
   const [groupSearch, setGroupSearch]       = useState('')
+  const [expandedGroups, setExpandedGroups] = useState(new Set())
   const [confirmAction, setConfirmAction]   = useState(null) // { type, group }
   const [actionLoading, setActionLoading]   = useState(false)
   const [durCalcInfo, setDurCalcInfo]       = useState(null) // { km, mins } | { error }
@@ -287,9 +301,13 @@ export default function SchedulesPage() {
 
   const sf = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const setSeatField = (idx, key, value) =>
-    setForm(p => ({ ...p, seats: p.seats.map((s, i) => i === idx ? { ...s, [key]: value } : s) }))
-  const setSeatBaggageOption = (idx, kg, value) =>
-    setForm(p => ({ ...p, seats: p.seats.map((s, i) => i === idx ? { ...s, extra_baggage_options: { ...s.extra_baggage_options, [kg]: value } } : s) }))
+    setForm(p => ({ ...p, seats: p.seats.map((s, i) => {
+      if (i !== idx) return s
+      const updated = { ...s, [key]: value }
+      if (key === 'base_price') updated.extra_baggage_price = autoExtraBagPrice(value, s.class)
+      return updated
+    })}))
+
   const toggleDay = (day) =>
     setForm(p => ({
       ...p,
@@ -365,6 +383,12 @@ export default function SchedulesPage() {
     loadFlights()
   }
 
+  const toggleExpanded = (key) => setExpandedGroups(prev => {
+    const next = new Set(prev)
+    next.has(key) ? next.delete(key) : next.add(key)
+    return next
+  })
+
   const prefillFromGroup = (group) => {
     const depAirport = airports.find(a => a.id === group.dep_id || (a.code || '').toUpperCase() === group.dep_code.toUpperCase())
     const arrAirport = airports.find(a => a.id === group.arr_id || (a.code || '').toUpperCase() === group.arr_code.toUpperCase())
@@ -402,17 +426,23 @@ export default function SchedulesPage() {
 
   const scheduleGroups  = groupBySchedule(flights)
   const filteredGroups  = groupSearch.trim()
-    ? scheduleGroups.filter(g =>
-        g.flight_number.toLowerCase().includes(groupSearch.toLowerCase()) ||
-        g.dep_code.toLowerCase().includes(groupSearch.toLowerCase()) ||
-        g.arr_code.toLowerCase().includes(groupSearch.toLowerCase()) ||
-        g.airline_name.toLowerCase().includes(groupSearch.toLowerCase())
-      )
+    ? scheduleGroups.filter(g => {
+        const q = groupSearch.toLowerCase()
+        return g.dep_code.toLowerCase().includes(q) ||
+               g.arr_code.toLowerCase().includes(q) ||
+               g.airline_code.toLowerCase().includes(q) ||
+               g.airline_name.toLowerCase().includes(q)
+      })
     : scheduleGroups
 
   const handleApplyPrices = () => {
     if (!priceSuggestion) return
-    setForm(p => ({ ...p, seats: p.seats.map(s => ({ ...s, base_price: String(priceSuggestion[s.class] ?? s.base_price) })) }))
+    setForm(p => ({ ...p, seats: p.seats.map(s => ({
+      ...s,
+      base_price: String(priceSuggestion[s.class] ?? s.base_price),
+      extra_baggage_price: autoExtraBagPrice(priceSuggestion[s.class] ?? s.base_price, s.class),
+    }))}))
+
   }
 
   // ── Create handler ───────────────────────────────────────────────────────────
@@ -444,16 +474,27 @@ export default function SchedulesPage() {
     setCreating(true)
     setProgress({ done: 0, total: totalFlights, failed: 0 })
 
-    const seatPayload = form.seats.map(s => ({
-      class: s.class, total_seats: s.total_seats, base_price: s.base_price || null,
+    // seatPayload cơ sở — base_price sẽ được nhân hệ số giờ bên trong vòng lặp
+    const baseSeatPayload = form.seats.map(s => ({
+      class: s.class, total_seats: s.total_seats,
+      rawPrice: s.base_price ? Number(s.base_price) : null,
       baggage_included_kg: s.baggage_included_kg, carry_on_kg: s.carry_on_kg,
-      extra_baggage_options: { 0: 0, 5: Number(s.extra_baggage_options?.[5] ?? 0), 10: Number(s.extra_baggage_options?.[10] ?? 0), 20: Number(s.extra_baggage_options?.[20] ?? 0) },
+      extra_baggage_price: Number(s.extra_baggage_price) || 0,
     }))
 
     let done = 0, failed = 0, numIdx = 0
     for (const dateStr of effectiveDates) {
       for (const timeStr of timeSlotsPerDay) {
         const depTime = `${dateStr}T${timeStr}`
+        const depHour = parseInt(timeStr.slice(0, 2))
+        const { mult: timeMult } = getTimeMult(depHour)
+
+        // Áp hệ số giờ vào giá từng hạng ghế
+        const seatPayload = baseSeatPayload.map(({ rawPrice, ...s }) => ({
+          ...s,
+          base_price: rawPrice ? Math.round(rawPrice * timeMult / 1000) * 1000 : null,
+        }))
+
         const flightNum = numPool[numIdx++]
         try {
           await createFlight({
@@ -742,10 +783,12 @@ export default function SchedulesPage() {
 
                 {/* Days of week */}
                 <div className="form-group full">
-                  <label className="form-label">
-                    Các ngày trong tuần *
-                    <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>— chỉ những ngày được chọn mới tạo chuyến</span>
-                  </label>
+                  <label className="form-label">Các ngày trong tuần *</label>
+                  <div style={{ fontSize:12, marginBottom:8, color:'var(--text-muted)', lineHeight:1.6 }}>
+                    Lọc ngày <strong>trong khoảng đã chọn</strong> — chỉ tạo chuyến vào những ngày được tick.
+                    VD: chọn 01/06 → 30/06 nhưng chỉ tick <strong>T2–T6</strong> → hệ thống bỏ qua T7 &amp; CN,
+                    chỉ tạo trên ~22 ngày làm việc thay vì cả 30 ngày.
+                  </div>
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
                     {DAYS_OF_WEEK.map(d => (
                       <button key={d.value} type="button" onClick={() => toggleDay(d.value)} style={{
@@ -775,20 +818,35 @@ export default function SchedulesPage() {
                       {effectiveDates.length > 0 ? (
                         <>
                           <span style={{ fontSize:20 }}>✓</span>
-                          <div>
-                            <span style={{ fontWeight:600, color:'var(--success)' }}>
-                              Sẽ tạo {totalToCreate} chuyến bay
-                            </span>
-                            <span style={{ color:'var(--text-muted)', fontSize:12, marginLeft:8 }}>
-                              ({effectiveDates.length} ngày × {timeSlotsPerDay.length} chuyến/ngày)
-                            </span>
+                          <div style={{ lineHeight:1.7 }}>
+                            <div>
+                              <span style={{ fontWeight:600, color:'var(--success)' }}>
+                                Sẽ tạo {totalToCreate} chuyến bay
+                              </span>
+                              <span style={{ color:'var(--text-muted)', fontSize:12, marginLeft:8 }}>
+                                ({effectiveDates.length} ngày × {timeSlotsPerDay.length} chuyến/ngày)
+                              </span>
+                            </div>
+                            {(() => {
+                              const totalDaysInRange = form.start_date && form.end_date
+                                ? getDatesInRange(form.start_date, form.end_date, [0,1,2,3,4,5,6]).length
+                                : 0
+                              const skipped = totalDaysInRange - effectiveDates.length
+                              return skipped > 0 ? (
+                                <div style={{ fontSize:12, color:'var(--text-muted)' }}>
+                                  Khoảng ngày có <strong>{totalDaysInRange} ngày</strong>, đã lọc bỏ{' '}
+                                  <strong style={{ color:'var(--accent)' }}>{skipped} ngày</strong>{' '}
+                                  không khớp ngày trong tuần đã chọn
+                                </div>
+                              ) : null
+                            })()}
                             {previewDates.length >= 500 && (
-                              <span style={{ color:'var(--warning)', fontSize:12, marginLeft:8 }}>⚠ Giới hạn 500/lần</span>
+                              <div style={{ fontSize:12, color:'var(--warning)' }}>⚠ Giới hạn 500 ngày/lần tạo</div>
                             )}
                             {poolShortfall && (
-                              <span style={{ color:'var(--danger)', fontSize:12, marginLeft:8 }}>
+                              <div style={{ fontSize:12, color:'var(--danger)' }}>
                                 ⚠ Chỉ còn {numPoolPreview.length} số hiệu khả dụng — cần {totalToCreate}
-                              </span>
+                              </div>
                             )}
                           </div>
                         </>
@@ -854,10 +912,10 @@ export default function SchedulesPage() {
                       <input className="form-control" type="number" value={seat.base_price} onChange={e => setSeatField(idx, 'base_price', e.target.value)} placeholder="VD: 1500000"/>
                       <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)', lineHeight:1.6 }}>
                         <span style={{ color:'var(--success)', fontWeight:600 }}>✓ Không bắt buộc.</span>{' '}
-                        Để trống nếu chưa xác định giá — có thể cập nhật sau trong{' '}
-                        <strong>Quản lý chuyến bay</strong>. Dùng nút{' '}
-                        <span style={{ color:'var(--accent)', fontWeight:500 }}>Áp dụng vào ghế</span>{' '}
-                        ở trên để điền giá gợi ý tự động.
+                        Để trống nếu chưa xác định giá — có thể cập nhật sau trong <strong>Quản lý chuyến bay</strong>.{' '}
+                        Nếu điền giá, hệ thống sẽ{' '}
+                        <span style={{ color:'var(--accent)', fontWeight:600 }}>tự động nhân hệ số theo giờ bay</span>{' '}
+                        (VD: cao điểm sáng +25%, đêm khuya -15%) cho từng chuyến.
                       </div>
                     </div>
                     <div className="form-group">
@@ -869,14 +927,17 @@ export default function SchedulesPage() {
                       <input className="form-control" type="number" value={seat.carry_on_kg} onChange={e => setSeatField(idx, 'carry_on_kg', e.target.value)}/>
                     </div>
                     <div className="form-group full">
-                      <label className="form-label">Hành lý mua thêm</label>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-                        {BAGGAGE_PACKAGE_KGS.map(kg => (
-                          <div key={kg}>
-                            <label className="form-label" style={{ fontSize:11 }}>{kg}kg (VND)</label>
-                            <input className="form-control" type="number" value={seat.extra_baggage_options?.[kg] ?? '0'} onChange={e => setSeatBaggageOption(idx, kg, e.target.value)}/>
-                          </div>
-                        ))}
+                      <label className="form-label">Giá hành lý mua thêm (VND/kg)</label>
+                      <input className="form-control" type="number"
+                        value={seat.extra_baggage_price ?? '0'}
+                        onChange={e => setSeatField(idx, 'extra_baggage_price', e.target.value)}
+                        placeholder="Tự động từ giá cơ bản" min="0"/>
+                      <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)' }}>
+                        {seat.class === 'first'
+                          ? 'First Class: hành lý mua thêm miễn phí (0 VND/kg)'
+                          : Number(seat.extra_baggage_price) > 0
+                            ? `Tự tính từ giá vé · 5kg = ${fmtPrice(Number(seat.extra_baggage_price)*5)} · 10kg = ${fmtPrice(Number(seat.extra_baggage_price)*10)} · 20kg = ${fmtPrice(Number(seat.extra_baggage_price)*20)}`
+                            : 'Tự động tính khi nhập giá cơ bản'}
                       </div>
                     </div>
                   </div>
@@ -940,7 +1001,7 @@ export default function SchedulesPage() {
 
               {/* Stats summary */}
               <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:10 }}>
-                {scheduleGroups.length} lịch bay · {flights.length} chuyến tổng
+                {scheduleGroups.length} tuyến · {flights.length} chuyến tổng
               </div>
 
               {/* List */}
@@ -950,107 +1011,106 @@ export default function SchedulesPage() {
                     {scheduleGroups.length === 0 ? 'Chưa có lịch bay nào' : 'Không tìm thấy'}
                   </div>
                 ) : filteredGroups.map(group => {
-                  const state    = getGroupState(group)
+                  const state     = getGroupState(group)
                   const dateRange = getGroupDateRange(group)
-                  const stats    = getGroupStats(group)
+                  const stats     = getGroupStats(group)
+                  const isExpanded = expandedGroups.has(group.key)
+                  const sortedFlights = [...group.flights].sort((a, b) =>
+                    (a.departure_time || '').localeCompare(b.departure_time || '')
+                  )
+                  const fmtDt = (dt) => {
+                    const m = dt?.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/)
+                    return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : (dt || '—')
+                  }
+                  const STATUS_LABEL = { scheduled:'Lên lịch', delayed:'Trễ', boarding:'Lên máy bay', departed:'Đã khởi hành', arrived:'Đã đến', cancelled:'Đã hủy', completed:'Hoàn thành' }
+                  const STATUS_COLOR = { scheduled:'var(--success)', delayed:'var(--warning)', boarding:'var(--accent)', departed:'var(--accent)', arrived:'var(--success)', cancelled:'var(--danger)', completed:'var(--text-muted)' }
+
                   return (
-                    <div key={group.flight_number} style={{
-                      border:'1px solid var(--border)', borderRadius:8, marginBottom:8, padding:'10px 12px',
+                    <div key={group.key} style={{
+                      border:'1px solid var(--border)', borderRadius:8, marginBottom:8,
                       background: state === 'cancelled' ? 'rgba(0,0,0,0.02)' : 'var(--bg-card)',
-                      opacity: state === 'cancelled' ? 0.75 : 1,
+                      opacity: state === 'cancelled' ? 0.75 : 1, overflow:'hidden',
                     }}>
-                      {/* Header row */}
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-                        <span style={{ fontWeight:700, fontSize:14, color:'var(--text-primary)', letterSpacing:0.3 }}>
-                          {group.flight_number}
-                        </span>
-                        {/* State badge */}
-                        {state === 'active'    && <span className="badge badge-success" style={{ fontSize:10 }}>Đang chạy</span>}
-                        {state === 'paused'    && <span className="badge badge-warning" style={{ fontSize:10 }}>Tạm dừng</span>}
-                        {state === 'cancelled' && <span className="badge badge-danger"  style={{ fontSize:10 }}>Đã hủy</span>}
-                      </div>
-
-                      {/* Route + airline */}
-                      <div style={{ fontSize:12, color:'var(--text-secondary)', marginBottom:3 }}>
-                        <strong>{group.dep_code}</strong> → <strong>{group.arr_code}</strong>
-                        <span style={{ color:'var(--text-muted)', marginLeft:6 }}>· {group.airline_name}</span>
-                      </div>
-
-                      {/* Date range */}
-                      {dateRange && (
-                        <div style={{ fontSize:11, color:'var(--text-muted)', marginBottom:6 }}>
-                          {dateRange.from} – {dateRange.to}
+                      {/* ── Clickable summary header ── */}
+                      <div
+                        onClick={() => toggleExpanded(group.key)}
+                        style={{ padding:'10px 12px', cursor:'pointer', userSelect:'none' }}
+                      >
+                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                          {isExpanded
+                            ? <LuChevronDown size={13} style={{ color:'var(--text-muted)', flexShrink:0 }}/>
+                            : <LuChevronRight size={13} style={{ color:'var(--text-muted)', flexShrink:0 }}/>}
+                          <span style={{ fontWeight:700, fontSize:14 }}>
+                            {group.dep_code} → {group.arr_code}
+                          </span>
+                          <span style={{ fontSize:11, color:'var(--text-muted)' }}>· {group.airline_code}</span>
+                          {state === 'active'    && <span className="badge badge-success"  style={{ fontSize:10, marginLeft:'auto' }}>Đang chạy</span>}
+                          {state === 'paused'    && <span className="badge badge-warning"  style={{ fontSize:10, marginLeft:'auto' }}>Tạm dừng</span>}
+                          {state === 'cancelled' && <span className="badge badge-danger"   style={{ fontSize:10, marginLeft:'auto' }}>Đã hủy</span>}
                         </div>
-                      )}
-
-                      {/* Stats chips */}
-                      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
-                        <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'var(--bg-input)', color:'var(--text-muted)' }}>
-                          Tổng: {stats.total}
-                        </span>
-                        {stats.scheduled > 0 && (
-                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'var(--success-bg)', color:'var(--success)' }}>
-                            Lên lịch: {stats.scheduled}
-                          </span>
-                        )}
-                        {stats.paused > 0 && (
-                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'var(--warning-bg)', color:'var(--warning)' }}>
-                            Ẩn: {stats.paused}
-                          </span>
-                        )}
-                        {stats.cancelled > 0 && (
-                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4, background:'rgba(220,53,69,0.1)', color:'var(--danger)' }}>
-                            Hủy: {stats.cancelled}
-                          </span>
-                        )}
+                        <div style={{ fontSize:11, color:'var(--text-muted)', paddingLeft:19, marginBottom:4 }}>
+                          {group.airline_name}
+                          {dateRange && <> · {dateRange.from} – {dateRange.to}</>}
+                          {' · '}<strong>{stats.total}</strong> chuyến
+                        </div>
+                        {/* Stats chips */}
+                        <div style={{ display:'flex', gap:5, flexWrap:'wrap', paddingLeft:19 }}>
+                          {stats.scheduled > 0 && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'var(--success-bg)', color:'var(--success)' }}>Lên lịch: {stats.scheduled}</span>}
+                          {stats.paused    > 0 && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'var(--warning-bg)', color:'var(--warning)' }}>Ẩn: {stats.paused}</span>}
+                          {stats.cancelled > 0 && <span style={{ fontSize:10, padding:'1px 6px', borderRadius:4, background:'rgba(220,53,69,0.1)', color:'var(--danger)' }}>Hủy: {stats.cancelled}</span>}
+                        </div>
                       </div>
 
-                      {/* Action buttons */}
-                      <div style={{ display:'flex', gap:6 }}>
+                      {/* ── Action buttons ── */}
+                      <div style={{ display:'flex', gap:6, padding:'0 12px 10px', paddingLeft:31 }}>
                         {state === 'cancelled' ? (
-                          // Re-create button when all cancelled
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}
-                            onClick={() => prefillFromGroup(group)}
-                            title="Điền lại form với thông tin lịch này"
-                          >
+                          <button className="btn btn-secondary btn-sm" style={{ display:'flex', alignItems:'center', gap:4, fontSize:11 }}
+                            onClick={() => prefillFromGroup(group)}>
                             <LuCopy size={11}/> Tạo lại lịch tương tự
                           </button>
                         ) : (
                           <>
-                            {/* Pause / Resume */}
                             {state === 'paused' ? (
-                              <button
-                                className="btn btn-sm"
-                                style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'var(--success-bg)', color:'var(--success)', border:'1px solid var(--success)' }}
-                                onClick={() => setConfirmAction({ type: 'resume', group })}
-                              >
+                              <button className="btn btn-sm" style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'var(--success-bg)', color:'var(--success)', border:'1px solid var(--success)' }}
+                                onClick={() => setConfirmAction({ type:'resume', group })}>
                                 <LuPlay size={11}/> Tiếp tục
                               </button>
                             ) : (
-                              <button
-                                className="btn btn-sm"
-                                style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'var(--warning-bg)', color:'var(--warning)', border:'1px solid var(--warning)' }}
-                                onClick={() => setConfirmAction({ type: 'pause', group })}
-                              >
+                              <button className="btn btn-sm" style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'var(--warning-bg)', color:'var(--warning)', border:'1px solid var(--warning)' }}
+                                onClick={() => setConfirmAction({ type:'pause', group })}>
                                 <LuPause size={11}/> Tạm dừng
                               </button>
                             )}
-
-                            {/* Cancel */}
                             {stats.cancellable > 0 && (
-                              <button
-                                className="btn btn-sm"
-                                style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'rgba(220,53,69,0.08)', color:'var(--danger)', border:'1px solid var(--danger)' }}
-                                onClick={() => setConfirmAction({ type: 'cancel', group })}
-                              >
+                              <button className="btn btn-sm" style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, background:'rgba(220,53,69,0.08)', color:'var(--danger)', border:'1px solid var(--danger)' }}
+                                onClick={() => setConfirmAction({ type:'cancel', group })}>
                                 <LuBan size={11}/> Hủy lịch
                               </button>
                             )}
                           </>
                         )}
                       </div>
+
+                      {/* ── Expanded flight list ── */}
+                      {isExpanded && (
+                        <div style={{ borderTop:'1px solid var(--border)', maxHeight:280, overflowY:'auto' }}>
+                          {sortedFlights.map(f => (
+                            <div key={f.id} style={{
+                              display:'grid', gridTemplateColumns:'1fr 90px 80px',
+                              alignItems:'center', padding:'5px 12px',
+                              borderBottom:'1px solid var(--border)', fontSize:11,
+                            }}>
+                              <span style={{ fontWeight:600, fontFamily:'monospace', letterSpacing:0.3, color:'var(--text-primary)' }}>
+                                {f.flight_number}
+                              </span>
+                              <span style={{ color:'var(--text-muted)' }}>{fmtDt(f.departure_time)}</span>
+                              <span style={{ color: STATUS_COLOR[f.status] || 'var(--text-muted)', textAlign:'right' }}>
+                                {STATUS_LABEL[f.status] || f.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1081,9 +1141,11 @@ export default function SchedulesPage() {
 
             {/* Flight info */}
             <div style={{ padding:'10px 0 6px', borderBottom:'1px solid var(--border)', marginBottom:14 }}>
-              <div style={{ fontWeight:700, fontSize:16 }}>{confirmAction.group.flight_number}</div>
+              <div style={{ fontWeight:700, fontSize:16 }}>
+                {confirmAction.group.dep_code} → {confirmAction.group.arr_code}
+              </div>
               <div style={{ fontSize:13, color:'var(--text-secondary)', marginTop:2 }}>
-                {confirmAction.group.dep_code} → {confirmAction.group.arr_code} · {confirmAction.group.airline_name}
+                {confirmAction.group.airline_name} · {getGroupStats(confirmAction.group).total} chuyến
               </div>
             </div>
 

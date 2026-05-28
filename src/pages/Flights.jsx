@@ -15,11 +15,10 @@ const fmtPrice = (n) => n ? new Intl.NumberFormat('vi-VN', { style: 'currency', 
 
 const SEAT_CLASS_ORDER = ['economy', 'business', 'first']
 const SEAT_CLASS_LABELS = { economy: 'Economy', business: 'Business', first: 'First Class' }
-const BAGGAGE_PACKAGE_KGS = [5, 10, 20]
 const SEAT_DEFAULTS = {
-  economy:  { total_seats: '200', baggage_included_kg: '23', carry_on_kg: '7',  extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  business: { total_seats: '40',  baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
-  first:    { total_seats: '20',  baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_options: { 0: '0', 5: '0', 10: '0', 20: '0' } },
+  economy:  { total_seats: '200', baggage_included_kg: '23', carry_on_kg: '7',  extra_baggage_price: '0' },
+  business: { total_seats: '40',  baggage_included_kg: '32', carry_on_kg: '12', extra_baggage_price: '0' },
+  first:    { total_seats: '20',  baggage_included_kg: '40', carry_on_kg: '15', extra_baggage_price: '0' },
 }
 
 // ─── Airline / Route validation ───────────────────────────────────────────────
@@ -123,14 +122,12 @@ const estimateFlightMins = (km) => {
 
 // ─── Seat helpers ─────────────────────────────────────────────────────────────
 
-const normalizeBaggageOptions = (options, legacyPrice = 0) => {
-  const fb = Number(legacyPrice || 0)
-  return {
-    0: '0',
-    5: String(options?.[5] ?? options?.['5'] ?? fb * 5),
-    10: String(options?.[10] ?? options?.['10'] ?? fb * 10),
-    20: String(options?.[20] ?? options?.['20'] ?? fb * 20),
-  }
+// ~4.5% base_price per kg for economy, ~2.5% for business, 0 for first
+const autoExtraBagPrice = (basePrice, cls) => {
+  const p = Number(basePrice) || 0
+  if (!p || cls === 'first') return '0'
+  const ratio = cls === 'business' ? 0.025 : 0.045
+  return String(Math.max(5000, Math.round(p * ratio / 1000) * 1000))
 }
 
 const normalizeSeatForForm = (seat = {}) => {
@@ -142,7 +139,7 @@ const normalizeSeatForForm = (seat = {}) => {
     base_price: seat.base_price ?? '',
     baggage_included_kg: seat.baggage_included_kg ?? def.baggage_included_kg,
     carry_on_kg: seat.carry_on_kg ?? def.carry_on_kg,
-    extra_baggage_options: normalizeBaggageOptions(seat.extra_baggage_options ?? def.extra_baggage_options, seat.extra_baggage_price),
+    extra_baggage_price: String(seat.extra_baggage_price ?? 0),
   }
 }
 
@@ -217,7 +214,7 @@ const buildFlightPayload = (form) => ({
   seats: Array.isArray(form.seats) ? form.seats.map(s => ({
     class: s.class, total_seats: s.total_seats, base_price: s.base_price,
     baggage_included_kg: s.baggage_included_kg, carry_on_kg: s.carry_on_kg,
-    extra_baggage_options: { 0: 0, 5: Number(s.extra_baggage_options?.[5] ?? 0), 10: Number(s.extra_baggage_options?.[10] ?? 0), 20: Number(s.extra_baggage_options?.[20] ?? 0) },
+    extra_baggage_price: Number(s.extra_baggage_price) || 0,
   })) : [],
 })
 
@@ -533,9 +530,13 @@ export default function FlightsPage() {
 
   const setField = (key, value) => setForm(p => ({ ...p, [key]: value }))
   const setSeatField = (idx, key, value) =>
-    setForm(p => ({ ...p, seats: p.seats.map((s, i) => i === idx ? { ...s, [key]: value } : s) }))
-  const setSeatBaggageOption = (idx, kg, value) =>
-    setForm(p => ({ ...p, seats: p.seats.map((s, i) => i === idx ? { ...s, extra_baggage_options: { ...s.extra_baggage_options, [kg]: value } } : s) }))
+    setForm(p => ({ ...p, seats: p.seats.map((s, i) => {
+      if (i !== idx) return s
+      const updated = { ...s, [key]: value }
+      if (key === 'base_price') updated.extra_baggage_price = autoExtraBagPrice(value, s.class)
+      return updated
+    })}))
+
 
   const clearFilters = () => { setDepartureDateFilter(''); setSortDirection(''); setPage(1) }
 
@@ -600,7 +601,11 @@ export default function FlightsPage() {
     if (!priceSuggestion) return
     setForm(p => ({
       ...p,
-      seats: p.seats.map(s => ({ ...s, base_price: String(priceSuggestion[s.class] ?? s.base_price) }))
+      seats: p.seats.map(s => ({
+        ...s,
+        base_price: String(priceSuggestion[s.class] ?? s.base_price),
+        extra_baggage_price: autoExtraBagPrice(priceSuggestion[s.class] ?? s.base_price, s.class),
+      }))
     }))
   }
 
@@ -975,14 +980,17 @@ export default function FlightsPage() {
                         <input className="form-control" type="number" value={seat.carry_on_kg} onChange={e => setSeatField(idx, 'carry_on_kg', e.target.value)} placeholder="7" />
                       </div>
                       <div className="form-group full">
-                        <label className="form-label">Giá hành lý mua thêm theo gói</label>
-                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:16 }}>
-                          {BAGGAGE_PACKAGE_KGS.map(kg => (
-                            <div className="form-group" key={kg}>
-                              <label className="form-label">Giá hành lý {kg}kg (VND)</label>
-                              <input className="form-control" type="number" value={seat.extra_baggage_options?.[kg] ?? seat.extra_baggage_options?.[String(kg)] ?? '0'} onChange={e => setSeatBaggageOption(idx, kg, e.target.value)} placeholder="0" />
-                            </div>
-                          ))}
+                        <label className="form-label">Giá hành lý mua thêm (VND/kg)</label>
+                        <input className="form-control" type="number"
+                          value={seat.extra_baggage_price ?? '0'}
+                          onChange={e => setSeatField(idx, 'extra_baggage_price', e.target.value)}
+                          placeholder="Tự động từ giá cơ bản" min="0"/>
+                        <div style={{ fontSize:11, marginTop:4, color:'var(--text-muted)' }}>
+                          {seat.class === 'first'
+                            ? 'First Class: hành lý mua thêm miễn phí (0 VND/kg)'
+                            : Number(seat.extra_baggage_price) > 0
+                              ? `Tự tính từ giá vé · 5kg = ${fmtPrice(Number(seat.extra_baggage_price)*5)} · 10kg = ${fmtPrice(Number(seat.extra_baggage_price)*10)} · 20kg = ${fmtPrice(Number(seat.extra_baggage_price)*20)}`
+                              : 'Tự động tính khi nhập giá cơ bản'}
                         </div>
                       </div>
                       <div className="form-group full">
