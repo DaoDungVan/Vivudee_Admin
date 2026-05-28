@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights } from '../api'
+import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch } from '../api'
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
-  LuChevronDown, LuChevronRight,
+  LuChevronDown, LuChevronRight, LuZap, LuUser, LuCircleCheck,
 } from 'react-icons/lu'
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
@@ -287,14 +287,38 @@ export default function SchedulesPage() {
   const [confirmAction, setConfirmAction]   = useState(null) // { type, group }
   const [actionLoading, setActionLoading]   = useState(false)
   const [durCalcInfo, setDurCalcInfo]       = useState(null) // { km, mins } | { error }
+  // ── Auto multi-airline mode ───────────────────────────────────────────────────
+  const [scheduleMode, setScheduleMode]     = useState('single') // 'single' | 'auto'
+  const [autoStatus,   setAutoStatus]       = useState(null)
+  const [autoSaving,   setAutoSaving]       = useState(false)
+  const [autoRunning,  setAutoRunning]      = useState(false)
+  const [autoMsg,      setAutoMsg]          = useState('')
+  const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', flights_per_route:'3', advance_days:'30', is_enabled: false })
 
   const loadFlights = () =>
     getFlights({ limit: 500 }).then(r => setFlights(r.data.data || [])).catch(() => {})
+
+  const loadAutoStatus = () =>
+    getAutoFlightStatus()
+      .then(r => {
+        const d = r.data
+        setAutoStatus(d)
+        if (d.config) setAutoForm(p => ({
+          ...p,
+          start_date:       d.config.start_date?.slice(0,10) || '',
+          end_date:         d.config.end_date?.slice(0,10)   || '',
+          flights_per_route: String(d.config.flights_per_route || 3),
+          advance_days:      String(d.config.advance_days     || 30),
+          is_enabled:        !!d.config.is_enabled,
+        }))
+      })
+      .catch(() => {})
 
   useEffect(() => {
     getAirports({ limit: 200 }).then(r => setAirports(r.data.data || [])).catch(() => {})
     getAirlines({ limit: 100 }).then(r => setAirlines(r.data.data || [])).catch(() => {})
     loadFlights()
+    loadAutoStatus()
   }, [])
 
   // ── Form helpers ─────────────────────────────────────────────────────────────
@@ -404,6 +428,45 @@ export default function SchedulesPage() {
       dur_m: durM ? String(durM) : '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // ── Auto mode handlers ───────────────────────────────────────────────────────
+
+  const handleSaveAuto = async (newEnabled) => {
+    setAutoSaving(true)
+    setAutoMsg('')
+    try {
+      const payload = {
+        is_enabled:        newEnabled !== undefined ? newEnabled : autoForm.is_enabled,
+        start_date:        autoForm.start_date  || null,
+        end_date:          autoForm.end_date    || null,
+        flights_per_route: Number(autoForm.flights_per_route) || 3,
+        advance_days:      Number(autoForm.advance_days)      || 30,
+      }
+      await saveAutoFlightConfig(payload)
+      setAutoForm(p => ({ ...p, is_enabled: payload.is_enabled }))
+      await loadAutoStatus()
+      setAutoMsg(payload.is_enabled ? 'Đã bật — cron chạy mỗi 30 phút' : 'Đã tắt')
+    } catch (e) {
+      setAutoMsg('Lỗi: ' + (e.response?.data?.error || e.message))
+    } finally {
+      setAutoSaving(false)
+    }
+  }
+
+  const handleRunNow = async () => {
+    setAutoRunning(true)
+    setAutoMsg('')
+    try {
+      const r = await runAutoFlightBatch(50)
+      setAutoMsg(`Chạy xong: tạo ${r.data.created} chuyến, bỏ qua ${r.data.skipped}`)
+      loadFlights()
+      loadAutoStatus()
+    } catch (e) {
+      setAutoMsg('Lỗi: ' + (e.response?.data?.error || e.message))
+    } finally {
+      setAutoRunning(false)
+    }
   }
 
   // ── Derived values ───────────────────────────────────────────────────────────
@@ -565,8 +628,10 @@ export default function SchedulesPage() {
         </div>
         <div className="page-content">
           <div style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
-            <div style={{ fontSize: 52, marginBottom: 16 }}>
-              {result.failed === 0 ? '✅' : '⚠️'}
+            <div style={{ marginBottom: 16 }}>
+              {result.failed === 0
+                ? <LuCircleCheck size={64} style={{ color:'var(--success)' }}/>
+                : <span style={{ fontSize:52 }}>⚠️</span>}
             </div>
             <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
               {result.failed === 0 ? 'Tạo lịch bay thành công!' : 'Hoàn tất với một số lỗi'}
@@ -614,6 +679,166 @@ export default function SchedulesPage() {
 
           {/* ════════ LEFT: Creation form ════════ */}
           <div style={{ flex:'1 1 auto', minWidth:0 }}>
+
+            {/* ── Mode toggle ── */}
+            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+              <button
+                type="button"
+                onClick={() => setScheduleMode('single')}
+                style={{
+                  display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:8,
+                  fontWeight:600, fontSize:13, cursor:'pointer', border:'2px solid',
+                  borderColor: scheduleMode === 'single' ? 'var(--accent)' : 'var(--border)',
+                  background:  scheduleMode === 'single' ? 'rgba(14,129,205,0.08)' : 'var(--bg-card)',
+                  color:       scheduleMode === 'single' ? 'var(--accent)' : 'var(--text-secondary)',
+                }}
+              >
+                <LuUser size={14}/> Tạo 1 hãng
+              </button>
+              <button
+                type="button"
+                onClick={() => setScheduleMode('auto')}
+                style={{
+                  display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:8,
+                  fontWeight:600, fontSize:13, cursor:'pointer', border:'2px solid',
+                  borderColor: scheduleMode === 'auto' ? 'var(--success)' : 'var(--border)',
+                  background:  scheduleMode === 'auto' ? 'rgba(5,150,105,0.08)' : 'var(--bg-card)',
+                  color:       scheduleMode === 'auto' ? 'var(--success)' : 'var(--text-secondary)',
+                }}
+              >
+                <LuZap size={14}/> Tự động đa hãng
+                {autoForm.is_enabled && <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--success)', display:'inline-block', marginLeft:2 }}/>}
+              </button>
+            </div>
+
+            {/* ── AUTO mode panel ── */}
+            {scheduleMode === 'auto' && (
+              <div className="card" style={{ padding:'20px', marginBottom:16 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                  <LuZap size={16} style={{ color:'var(--success)' }}/>
+                  <span style={{ fontWeight:700, fontSize:15 }}>Tự động tạo chuyến — Đa hãng</span>
+                  <span style={{
+                    marginLeft:'auto', fontSize:11, padding:'2px 8px', borderRadius:12,
+                    background: autoForm.is_enabled ? 'var(--success-bg)' : 'var(--bg-input)',
+                    color:      autoForm.is_enabled ? 'var(--success)'    : 'var(--text-muted)',
+                    fontWeight: 600,
+                  }}>
+                    {autoForm.is_enabled ? 'Đang bật' : 'Đang tắt'}
+                  </span>
+                </div>
+                <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:16, lineHeight:1.6 }}>
+                  Hệ thống tự động đọc tất cả hãng bay và tuyến đường từ dữ liệu thực tế,
+                  tính thời gian bay bằng tọa độ, áp giá theo tier hãng và khung giờ.
+                  Cron chạy mỗi <strong>30 phút</strong>, tạo tối đa 20 chuyến/lần — trải đều trong ngày.
+                </p>
+
+                {/* Status chips */}
+                {autoStatus && (
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+                    <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
+                      {autoStatus.total_routes} tuyến đã phát hiện
+                    </span>
+                    <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
+                      Đã tạo tổng: {autoStatus.config?.total_created || 0} chuyến
+                    </span>
+                    {autoStatus.config?.last_run_at && (
+                      <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
+                        Lần cuối: {new Date(autoStatus.config.last_run_at).toLocaleString('vi-VN')}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Form fields */}
+                <div className="form-grid" style={{ marginBottom:16 }}>
+                  <div className="form-group">
+                    <label className="form-label">Từ ngày</label>
+                    <input className="form-control" type="date"
+                      value={autoForm.start_date}
+                      onChange={e => setAutoForm(p => ({ ...p, start_date: e.target.value }))}/>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Đến ngày</label>
+                    <input className="form-control" type="date"
+                      value={autoForm.end_date}
+                      onChange={e => setAutoForm(p => ({ ...p, end_date: e.target.value }))}/>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Số chuyến/tuyến/ngày</label>
+                    <input className="form-control" type="number" min="1" max="12"
+                      value={autoForm.flights_per_route}
+                      onChange={e => setAutoForm(p => ({ ...p, flights_per_route: e.target.value }))}/>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
+                      Ví dụ: 5 → SGN→DAD 5 chuyến/ngày, SGN→HAN 5 chuyến/ngày riêng biệt
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Tạo trước (ngày)</label>
+                    <input className="form-control" type="number" min="1" max="90"
+                      value={autoForm.advance_days}
+                      onChange={e => setAutoForm(p => ({ ...p, advance_days: e.target.value }))}/>
+                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
+                      Tạo trước tối đa N ngày kể từ hôm nay
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={autoSaving}
+                    onClick={() => handleSaveAuto()}
+                    style={{ fontSize:13 }}
+                  >
+                    {autoSaving ? 'Đang lưu...' : 'Lưu cấu hình'}
+                  </button>
+                  {autoForm.is_enabled ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={autoSaving}
+                      onClick={() => handleSaveAuto(false)}
+                      style={{ fontSize:13, background:'rgba(220,53,69,0.08)', color:'var(--danger)', border:'1px solid var(--danger)' }}
+                    >
+                      Tắt cron
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={autoSaving}
+                      onClick={() => handleSaveAuto(true)}
+                      style={{ fontSize:13, background:'var(--success-bg)', color:'var(--success)', border:'1px solid var(--success)' }}
+                    >
+                      Bật cron
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled={autoRunning}
+                    onClick={handleRunNow}
+                    style={{ fontSize:13, display:'flex', alignItems:'center', gap:5, background:'rgba(14,129,205,0.08)', color:'var(--accent)', border:'1px solid var(--accent)' }}
+                  >
+                    <LuZap size={12}/> {autoRunning ? 'Đang chạy...' : 'Chạy ngay (50 chuyến)'}
+                  </button>
+                </div>
+
+                {autoMsg && (
+                  <div style={{ marginTop:10, fontSize:12, padding:'6px 10px', borderRadius:6,
+                    background: autoMsg.startsWith('Lỗi') ? 'rgba(220,53,69,0.08)' : 'var(--success-bg)',
+                    color:      autoMsg.startsWith('Lỗi') ? 'var(--danger)'        : 'var(--success)',
+                  }}>
+                    {autoMsg}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Section 1: Thông tin cơ bản (ẩn khi mode auto) ── */}
+            {scheduleMode === 'single' && <>
 
             {/* ── Section 1: Thông tin cơ bản ── */}
             <div className="card" style={{ marginBottom: 16, padding: '20px 20px 12px' }}>
@@ -965,6 +1190,8 @@ export default function SchedulesPage() {
                   : 'Tạo lịch bay'}
               </button>
             </div>
+
+            </>}{/* end scheduleMode === 'single' */}
 
           </div>{/* end LEFT column */}
 

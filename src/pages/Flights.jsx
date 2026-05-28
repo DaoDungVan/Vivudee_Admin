@@ -674,9 +674,11 @@ export default function FlightsPage() {
                         <span style={{ fontSize:13, fontWeight:500 }}>
                           {f.departure_code || f.dep_code || '?'} → {f.arrival_code || f.arr_code || '?'}
                         </span>
-                        <div style={{ fontSize:11, color:'var(--text-muted)' }}>
-                          {f.from_city || f.departure_city || ''} → {f.to_city || f.arrival_city || ''}
-                        </div>
+                        {(f.from_city || f.departure_city || f.to_city || f.arrival_city) && (
+                          <div style={{ fontSize:11, color:'var(--text-muted)' }}>
+                            {f.from_city || f.departure_city || ''} → {f.to_city || f.arrival_city || ''}
+                          </div>
+                        )}
                       </td>
                       <td style={{ fontSize:12 }}>{f.departure_time ? formatRawDateTime(f.departure_time) : '—'}</td>
                       <td style={{ fontSize:12 }}>{f.arrival_time ? formatRawDateTime(f.arrival_time) : '—'}</td>

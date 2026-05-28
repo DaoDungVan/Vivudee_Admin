@@ -105,6 +105,12 @@ export const updateScheduleStatus   = (id, is_active) => api.patch(`/admin/sched
 export const deleteSchedule         = (id)     => api.delete(`/admin/schedules/${id}`)
 export const triggerGenerateFlights = ()       => api.post('/admin/schedules/generate')
 
+// ─── Auto Multi-Airline Flight Generator ───────────────────────────────────
+export const getAutoFlightStatus = ()     => api.get('/admin/auto-flights/status')
+export const getAutoFlightConfig = ()     => api.get('/admin/auto-flights/config')
+export const saveAutoFlightConfig = (data) => api.put('/admin/auto-flights/config', data)
+export const runAutoFlightBatch  = (batch_size) => api.post('/admin/auto-flights/run', { batch_size })
+
 // ─── Airports ──────────────────────────────────────────────────────────────
 export const getAirports     = (params) => api.get('/admin/airports', { params })
 export const createAirport   = (data)   => api.post('/admin/airports', data)
