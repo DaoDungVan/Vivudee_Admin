@@ -7,9 +7,11 @@ import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert, LuZap,
 const SEARCH_FETCH_LIMIT = 500
 
 const SORT_OPTIONS = [
-  { value: '', label: 'Sắp xếp khởi hành' },
-  { value: 'desc', label: 'Chuyến mới nhất' },
-  { value: 'asc', label: 'Chuyến cũ nhất' },
+  { value: 'created_desc', label: 'Mới tạo nhất' },
+  { value: 'created_asc',  label: 'Cũ tạo nhất' },
+  { value: '',    label: 'Sắp xếp khởi hành' },
+  { value: 'desc', label: 'Khởi hành mới nhất' },
+  { value: 'asc',  label: 'Khởi hành cũ nhất' },
 ]
 const fmtPrice = (n) => n ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(n)) : '—'
 
@@ -168,8 +170,10 @@ const getFlightDateOnly = (v) => {
   return m ? m[1] : ''
 }
 
-const sortFlights = (items, dir) =>
-  [...items].sort((a, b) => {
+const sortFlights = (items, dir) => {
+  if (dir === 'created_desc') return [...items].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
+  if (dir === 'created_asc')  return [...items].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+  return [...items].sort((a, b) => {
     const ta = getFlightDateValue(a?.departure_time)
     const tb = getFlightDateValue(b?.departure_time)
     if (isNaN(ta) && isNaN(tb)) return 0
@@ -177,6 +181,7 @@ const sortFlights = (items, dir) =>
     if (isNaN(tb)) return -1
     return dir === 'desc' ? tb - ta : ta - tb
   })
+}
 
 const STATUS_LABELS = {
   scheduled: { label: 'Đã lên lịch',    cls: 'badge-info' },
@@ -382,7 +387,7 @@ export default function FlightsPage() {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [departureDateFilter, setDepartureDateFilter] = useState('')
-  const [sortDirection, setSortDirection] = useState('')
+  const [sortDirection, setSortDirection] = useState('created_desc')
   const [showHidden, setShowHidden] = useState(true)
   const [modal, setModal] = useState(null)
   const [editData, setEditData] = useState(null)
