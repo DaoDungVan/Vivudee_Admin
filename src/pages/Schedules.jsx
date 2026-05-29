@@ -773,13 +773,14 @@ export default function SchedulesPage() {
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Giới hạn tạo trước (ngày)</label>
+                    <label className="form-label">Giới hạn tạo trước (ngày) <span style={{fontWeight:400,color:'var(--text-muted)'}}>— dùng khi không đặt "Đến ngày"</span></label>
                     <input className="form-control" type="number" min="1" max="90"
                       value={autoForm.advance_days}
                       onChange={e => setAutoForm(p => ({ ...p, advance_days: e.target.value }))}/>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
-                      Chỉ tạo chuyến bay trong vòng <strong>N ngày tính từ hôm nay</strong>, bất kể "Đến ngày" chọn đến bao xa.
-                      <br/>Ví dụ: đặt 30 → dù "Đến ngày" là 31/12, hệ thống chỉ tạo đến {new Date(Date.now() + 30*864e5).toLocaleDateString('vi-VN')}.
+                      Hệ thống lấy ngày <strong>nào gần hơn</strong> giữa "Đến ngày" và giới hạn này.<br/>
+                      • Nếu <strong>có "Đến ngày"</strong> gần (vd: 31/5) → giới hạn này bị bỏ qua, chạy đúng đến 31/5.<br/>
+                      • Nếu <strong>không đặt "Đến ngày"</strong> hoặc đặt rất xa → giới hạn này quyết định, cron chỉ tạo đến hôm nay + N ngày.
                     </div>
                   </div>
                 </div>
