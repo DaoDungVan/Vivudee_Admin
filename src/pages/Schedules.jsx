@@ -773,12 +773,13 @@ export default function SchedulesPage() {
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Tạo trước (ngày)</label>
+                    <label className="form-label">Giới hạn tạo trước (ngày)</label>
                     <input className="form-control" type="number" min="1" max="90"
                       value={autoForm.advance_days}
                       onChange={e => setAutoForm(p => ({ ...p, advance_days: e.target.value }))}/>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
-                      Tạo trước tối đa N ngày kể từ hôm nay
+                      Chỉ tạo chuyến bay trong vòng <strong>N ngày tính từ hôm nay</strong>, bất kể "Đến ngày" chọn đến bao xa.
+                      <br/>Ví dụ: đặt 30 → dù "Đến ngày" là 31/12, hệ thống chỉ tạo đến {new Date(Date.now() + 30*864e5).toLocaleDateString('vi-VN')}.
                     </div>
                   </div>
                 </div>
