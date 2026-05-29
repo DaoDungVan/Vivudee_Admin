@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch } from '../api'
+import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll } from '../api'
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
@@ -292,6 +292,7 @@ export default function SchedulesPage() {
   const [autoStatus,   setAutoStatus]       = useState(null)
   const [autoSaving,   setAutoSaving]       = useState(false)
   const [autoRunning,  setAutoRunning]      = useState(false)
+  const [autoRunningAll, setAutoRunningAll] = useState(false)
   const [autoMsg,      setAutoMsg]          = useState('')
   const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', flights_per_route:'3', advance_days:'30', is_enabled: false })
 
@@ -470,6 +471,22 @@ export default function SchedulesPage() {
       setAutoMsg('Lỗi: ' + (e.response?.data?.error || e.message))
     } finally {
       setAutoRunning(false)
+    }
+  }
+
+  const handleRunAll = async () => {
+    if (!window.confirm('Chạy toàn bộ có thể mất vài phút tùy số lượng tuyến và ngày. Tiếp tục?')) return
+    setAutoRunningAll(true)
+    setAutoMsg('⏳ Đang tạo toàn bộ chuyến bay, vui lòng chờ...')
+    try {
+      const r = await runAutoFlightAll()
+      setAutoMsg(`✓ Tạo toàn bộ xong: ${r.data.created} chuyến mới, bỏ qua ${r.data.skipped} đã có`)
+      loadFlights()
+      loadAutoStatus()
+    } catch (e) {
+      setAutoMsg('Lỗi: ' + (e.response?.data?.error || e.message))
+    } finally {
+      setAutoRunningAll(false)
     }
   }
 
@@ -824,11 +841,20 @@ export default function SchedulesPage() {
                   <button
                     type="button"
                     className="btn btn-sm"
-                    disabled={autoRunning}
+                    disabled={autoRunning || autoRunningAll}
                     onClick={handleRunNow}
                     style={{ fontSize:13, display:'flex', alignItems:'center', gap:5, background:'rgba(14,129,205,0.08)', color:'var(--accent)', border:'1px solid var(--accent)' }}
                   >
                     <LuZap size={12}/> {autoRunning ? 'Đang chạy...' : 'Chạy ngay (50 chuyến)'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    disabled={autoRunning || autoRunningAll}
+                    onClick={handleRunAll}
+                    style={{ fontSize:13, display:'flex', alignItems:'center', gap:5, background:'rgba(220,38,38,0.08)', color:'#dc2626', border:'1px solid #dc2626' }}
+                  >
+                    <LuZap size={12}/> {autoRunningAll ? 'Đang tạo toàn bộ...' : 'Chạy toàn bộ'}
                   </button>
                 </div>
 

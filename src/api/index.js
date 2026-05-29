@@ -110,6 +110,7 @@ export const getAutoFlightStatus = ()     => api.get('/admin/auto-flights/status
 export const getAutoFlightConfig = ()     => api.get('/admin/auto-flights/config')
 export const saveAutoFlightConfig = (data) => api.put('/admin/auto-flights/config', data)
 export const runAutoFlightBatch  = (batch_size) => api.post('/admin/auto-flights/run', { batch_size })
+export const runAutoFlightAll    = ()            => api.post('/admin/auto-flights/run-all')
 
 // ─── Airports ──────────────────────────────────────────────────────────────
 export const getAirports     = (params) => api.get('/admin/airports', { params })
