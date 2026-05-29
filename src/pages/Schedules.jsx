@@ -449,7 +449,7 @@ export default function SchedulesPage() {
       await loadAutoStatus()
       setAutoMsg(
         newEnabled !== undefined
-          ? (payload.is_enabled ? 'Đã bật — cron chạy mỗi 30 phút' : 'Đã tắt cron')
+          ? (payload.is_enabled ? 'Đã bật — cron chạy mỗi 5 phút' : 'Đã tắt cron')
           : '✓ Đã lưu cấu hình'
       )
     } catch (e) {
@@ -760,7 +760,7 @@ export default function SchedulesPage() {
                 <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:16, lineHeight:1.6 }}>
                   Hệ thống tự động đọc tất cả hãng bay và tuyến đường từ dữ liệu thực tế,
                   tính thời gian bay bằng tọa độ, áp giá theo tier hãng và khung giờ.
-                  Cron chạy mỗi <strong>30 phút</strong>, tạo tối đa 20 chuyến/lần — trải đều trong ngày.
+                  Cron chạy mỗi <strong>5 phút</strong>, tạo tối đa 200 chuyến/lần — hoàn tất toàn bộ trong ~12 giờ.
                 </p>
 
                 {/* Status chips */}
