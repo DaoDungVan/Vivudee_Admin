@@ -446,7 +446,11 @@ export default function SchedulesPage() {
       await saveAutoFlightConfig(payload)
       setAutoForm(p => ({ ...p, is_enabled: payload.is_enabled }))
       await loadAutoStatus()
-      setAutoMsg(payload.is_enabled ? 'Đã bật — cron chạy mỗi 30 phút' : 'Đã tắt')
+      setAutoMsg(
+        newEnabled !== undefined
+          ? (payload.is_enabled ? 'Đã bật — cron chạy mỗi 30 phút' : 'Đã tắt cron')
+          : '✓ Đã lưu cấu hình'
+      )
     } catch (e) {
       setAutoMsg('Lỗi: ' + (e.response?.data?.error || e.message))
     } finally {
