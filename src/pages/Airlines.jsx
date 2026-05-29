@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getAirlines, createAirline, updateAirline, updateAirlineStatus } from '../api'
+import { getAirlines, createAirline, updateAirline, updateAirlineStatus, getAirportCountries } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { LuPlaneTakeoff, LuSearch, LuRefreshCw, LuPencil, LuCheck, LuLock, LuX, LuTriangleAlert, LuHourglass, LuSave } from 'react-icons/lu'
 
@@ -24,6 +24,7 @@ export default function AirlinesPage() {
   const [form, setForm]             = useState(empty)
   const [saving, setSaving]         = useState(false)
   const [error, setError]           = useState('')
+  const [countries, setCountries]   = useState([])
   const requestIdRef                = useRef(0)
   const debouncedSearch             = useDebouncedValue(search)
 
@@ -67,6 +68,9 @@ export default function AirlinesPage() {
   }, [page, limit, debouncedSearch])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    getAirportCountries().then(r => setCountries(r.data?.data || [])).catch(() => {})
+  }, [])
 
   const openCreate = () => { setForm(empty); setError(''); setModal('create'); setEditItem(null) }
   const openEdit   = (a) => { setEditItem(a); setForm({ code: a.code, name: a.name, country: a.country || '', logo_url: a.logo_url || '' }); setError(''); setModal('edit') }
@@ -179,7 +183,13 @@ export default function AirlinesPage() {
             <div className="form-grid">
               <div className="form-group"><label className="form-label">Mã hãng *</label><input className="form-control" value={form.code} onChange={e=>sf('code',e.target.value.toUpperCase())} placeholder="VN" maxLength={10} /></div>
               <div className="form-group"><label className="form-label">Tên hãng bay *</label><input className="form-control" value={form.name} onChange={e=>sf('name',e.target.value)} placeholder="Vietnam Airlines" /></div>
-              <div className="form-group full"><label className="form-label">Quốc gia <span style={{fontSize:11,color:'var(--text-muted)'}}>— dùng để lọc tuyến bay tự động</span></label><input className="form-control" value={form.country} onChange={e=>sf('country',e.target.value)} placeholder="Vietnam" /></div>
+              <div className="form-group full">
+                <label className="form-label">Quốc gia <span style={{fontSize:11,color:'var(--text-muted)'}}>— dùng để lọc tuyến bay tự động</span></label>
+                <input className="form-control" list="country-list" value={form.country} onChange={e=>sf('country',e.target.value)} placeholder="Vietnam" autoComplete="off" />
+                <datalist id="country-list">
+                  {countries.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
               <div className="form-group full"><label className="form-label">URL Logo</label><input className="form-control" value={form.logo_url} onChange={e=>sf('logo_url',e.target.value)} placeholder="https://..." /></div>
               {form.logo_url && <div className="form-group full" style={{ textAlign: 'center' }}><img src={form.logo_url} alt="preview" style={{ height: 50, objectFit: 'contain' }} onError={e=>e.target.style.display='none'} /></div>}
             </div>

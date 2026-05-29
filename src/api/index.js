@@ -113,6 +113,7 @@ export const runAutoFlightBatch  = (batch_size) => api.post('/admin/auto-flights
 export const runAutoFlightAll    = ()            => api.post('/admin/auto-flights/run-all')
 
 // ─── Airports ──────────────────────────────────────────────────────────────
+export const getAirportCountries = () => api.get('/public/airport-countries')
 export const getAirports     = (params) => api.get('/admin/airports', { params })
 export const createAirport   = (data)   => api.post('/admin/airports', data)
 export const updateAirport   = (id, data) => api.put(`/admin/airports/${id}`, data)
