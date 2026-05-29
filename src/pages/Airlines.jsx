@@ -3,12 +3,12 @@ import { getAirlines, createAirline, updateAirline, updateAirlineStatus } from '
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { LuPlaneTakeoff, LuSearch, LuRefreshCw, LuPencil, LuCheck, LuLock, LuX, LuTriangleAlert, LuHourglass, LuSave } from 'react-icons/lu'
 
-const empty = { code: '', name: '', logo_url: '' }
+const empty = { code: '', name: '', country: '', logo_url: '' }
 const SEARCH_FETCH_LIMIT = 500
 
 const matchesAirlineSearch = (airline, keyword) => {
   const q = keyword.toLowerCase()
-  return [airline.code, airline.name, airline.logo_url]
+  return [airline.code, airline.name, airline.country, airline.logo_url]
     .some(value => String(value || '').toLowerCase().includes(q))
 }
 
@@ -69,7 +69,7 @@ export default function AirlinesPage() {
   useEffect(() => { load() }, [load])
 
   const openCreate = () => { setForm(empty); setError(''); setModal('create'); setEditItem(null) }
-  const openEdit   = (a) => { setEditItem(a); setForm({ code: a.code, name: a.name, logo_url: a.logo_url || '' }); setError(''); setModal('edit') }
+  const openEdit   = (a) => { setEditItem(a); setForm({ code: a.code, name: a.name, country: a.country || '', logo_url: a.logo_url || '' }); setError(''); setModal('edit') }
 
   const handleSave = async () => {
     setSaving(true); setError('')
@@ -125,7 +125,7 @@ export default function AirlinesPage() {
             <div className="table-wrapper">
               <table>
                 <thead>
-                  <tr><th>Logo</th><th>Mã hãng</th><th>Tên hãng bay</th><th>Ngày tạo</th><th>Trạng thái</th><th>Hành động</th></tr>
+                  <tr><th>Logo</th><th>Mã hãng</th><th>Tên hãng bay</th><th>Quốc gia</th><th>Ngày tạo</th><th>Trạng thái</th><th>Hành động</th></tr>
                 </thead>
                 <tbody>
                   {data.map(a => (
@@ -138,6 +138,7 @@ export default function AirlinesPage() {
                       </td>
                       <td><span className="td-mono">{a.code}</span></td>
                       <td style={{ fontWeight: 500 }}>{a.name}</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.country || <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.created_at ? new Date(a.created_at).toLocaleDateString('vi-VN') : '—'}</td>
                       <td><span className={`badge ${a.is_active ? 'badge-success' : 'badge-danger'}`} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>{a.is_active ? <><LuCheck size={12}/> Hoạt động</> : <><LuX size={12}/> Dừng</>}</span></td>
                       <td>
@@ -178,6 +179,7 @@ export default function AirlinesPage() {
             <div className="form-grid">
               <div className="form-group"><label className="form-label">Mã hãng *</label><input className="form-control" value={form.code} onChange={e=>sf('code',e.target.value.toUpperCase())} placeholder="VN" maxLength={10} /></div>
               <div className="form-group"><label className="form-label">Tên hãng bay *</label><input className="form-control" value={form.name} onChange={e=>sf('name',e.target.value)} placeholder="Vietnam Airlines" /></div>
+              <div className="form-group full"><label className="form-label">Quốc gia <span style={{fontSize:11,color:'var(--text-muted)'}}>— dùng để lọc tuyến bay tự động</span></label><input className="form-control" value={form.country} onChange={e=>sf('country',e.target.value)} placeholder="Vietnam" /></div>
               <div className="form-group full"><label className="form-label">URL Logo</label><input className="form-control" value={form.logo_url} onChange={e=>sf('logo_url',e.target.value)} placeholder="https://..." /></div>
               {form.logo_url && <div className="form-group full" style={{ textAlign: 'center' }}><img src={form.logo_url} alt="preview" style={{ height: 50, objectFit: 'contain' }} onError={e=>e.target.style.display='none'} /></div>}
             </div>
