@@ -475,16 +475,26 @@ export default function SchedulesPage() {
   }
 
   const handleRunAll = async () => {
-    if (!window.confirm('Chạy toàn bộ có thể mất vài phút tùy số lượng tuyến và ngày. Tiếp tục?')) return
+    if (!window.confirm('Hệ thống sẽ tạo toàn bộ chuyến bay theo từng đợt 200 chuyến cho đến khi hoàn tất. Tiếp tục?')) return
     setAutoRunningAll(true)
-    setAutoMsg('⏳ Đang tạo toàn bộ chuyến bay, vui lòng chờ...')
+    let totalCreated = 0
+    let totalSkipped = 0
+    let round = 0
     try {
-      const r = await runAutoFlightAll()
-      setAutoMsg(`✓ Tạo toàn bộ xong: ${r.data.created} chuyến mới, bỏ qua ${r.data.skipped} đã có`)
+      while (true) {
+        round++
+        setAutoMsg(`⏳ Đợt ${round}: đang tạo... (${totalCreated} chuyến đã tạo)`)
+        const r = await runAutoFlightBatch(200)
+        totalCreated += r.data.created || 0
+        totalSkipped += r.data.skipped || 0
+        // Nếu đợt này không tạo được gì → đã xong toàn bộ
+        if ((r.data.created || 0) === 0) break
+      }
+      setAutoMsg(`✓ Hoàn tất ${round} đợt: ${totalCreated} chuyến mới, ${totalSkipped} đã có sẵn`)
       loadFlights()
       loadAutoStatus()
     } catch (e) {
-      setAutoMsg('Lỗi: ' + (e.response?.data?.error || e.message))
+      setAutoMsg(`Lỗi sau ${totalCreated} chuyến: ` + (e.response?.data?.error || e.message))
     } finally {
       setAutoRunningAll(false)
     }
