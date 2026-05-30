@@ -16,7 +16,7 @@ export default function Newsletter() {
   const [tab,     setTab]     = useState('compose') // compose | subscribers
 
   useEffect(() => {
-    adminApi.get('/newsletter/subscribers')
+    api.get('/newsletter/subscribers')
       .then(r => setSubscribers(r.data.data || []))
       .catch(() => {})
   }, [])
@@ -32,7 +32,7 @@ export default function Newsletter() {
     setSending(true)
     setResult(null)
     try {
-      const r = await adminApi.post('/newsletter/send', form)
+      const r = await api.post('/newsletter/send', form)
       setResult(r.data)
     } catch (e) {
       setResult({ error: e?.response?.data?.error || 'Lỗi khi gửi' })
