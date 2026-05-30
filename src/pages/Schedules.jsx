@@ -4,7 +4,7 @@ import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, 
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
-  LuChevronDown, LuChevronRight, LuZap, LuUser, LuCircleCheck,
+  LuChevronDown, LuChevronRight, LuZap, LuUser, LuCircleCheck, LuBuilding2,
 } from 'react-icons/lu'
 
 // ─── Shared constants ─────────────────────────────────────────────────────────
@@ -288,7 +288,10 @@ export default function SchedulesPage() {
   const [actionLoading, setActionLoading]   = useState(false)
   const [durCalcInfo, setDurCalcInfo]       = useState(null) // { km, mins } | { error }
   // ── Auto multi-airline mode ───────────────────────────────────────────────────
-  const [scheduleMode, setScheduleMode]     = useState('single') // 'single' | 'auto'
+  const [scheduleMode, setScheduleMode]     = useState('single') // 'single' | 'auto' | 'airport'
+  const [apForm, setApForm] = useState({ airport_code:'', start_date:'', end_date:'', flights_per_route:2, mode:'per_day' })
+  const [apRunning, setApRunning]   = useState(false)
+  const [apResult,  setApResult]    = useState(null)
   const [autoStatus,   setAutoStatus]       = useState(null)
   const [autoSaving,   setAutoSaving]       = useState(false)
   const [autoRunning,  setAutoRunning]      = useState(false)
@@ -754,6 +757,19 @@ export default function SchedulesPage() {
                 <LuZap size={14}/> Tự động đa hãng
                 {autoForm.is_enabled && <span style={{ width:7, height:7, borderRadius:'50%', background:'var(--success)', display:'inline-block', marginLeft:2 }}/>}
               </button>
+              <button
+                type="button"
+                onClick={() => setScheduleMode('airport')}
+                style={{
+                  display:'flex', alignItems:'center', gap:6, padding:'7px 16px', borderRadius:8,
+                  fontWeight:600, fontSize:13, cursor:'pointer', border:'2px solid',
+                  borderColor: scheduleMode === 'airport' ? '#f59e0b' : 'var(--border)',
+                  background:  scheduleMode === 'airport' ? 'rgba(245,158,11,0.08)' : 'var(--bg-card)',
+                  color:       scheduleMode === 'airport' ? '#f59e0b' : 'var(--text-secondary)',
+                }}
+              >
+                <LuBuilding2 size={14}/> Tạo theo sân bay
+              </button>
             </div>
 
             {/* ── AUTO mode panel ── */}
@@ -899,6 +915,127 @@ export default function SchedulesPage() {
                     color:      autoMsg.startsWith('Lỗi') ? 'var(--danger)'        : 'var(--success)',
                   }}>
                     {autoMsg}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── AIRPORT mode panel ── */}
+            {scheduleMode === 'airport' && (
+              <div className="card" style={{ padding:20, marginBottom:16 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
+                  <LuBuilding2 size={16} style={{ color:'#f59e0b' }}/>
+                  <span style={{ fontWeight:700, fontSize:15 }}>Tạo chuyến bay theo sân bay</span>
+                </div>
+                <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:16 }}>
+                  Chọn 1 sân bay → hệ thống tạo chuyến bay đến tất cả sân bay còn lại, mỗi hãng được phân công theo tuyến phù hợp với quốc gia.
+                </p>
+
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+                  <div>
+                    <label className="form-label">Sân bay xuất phát *</label>
+                    <select className="form-control"
+                      value={apForm.airport_code}
+                      onChange={e => setApForm(f => ({...f, airport_code: e.target.value}))}
+                    >
+                      <option value="">-- Chọn sân bay --</option>
+                      {airports.map(a => (
+                        <option key={a.id} value={a.code}>{a.code} — {a.name} ({a.city})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label">Số chuyến/tuyến *</label>
+                    <input className="form-control" type="number" min={1} max={10}
+                      value={apForm.flights_per_route}
+                      onChange={e => setApForm(f => ({...f, flights_per_route: parseInt(e.target.value)||1}))}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Từ ngày *</label>
+                    <input className="form-control" type="date"
+                      value={apForm.start_date}
+                      onChange={e => setApForm(f => ({...f, start_date: e.target.value}))}
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Đến ngày *</label>
+                    <input className="form-control" type="date"
+                      value={apForm.end_date}
+                      onChange={e => setApForm(f => ({...f, end_date: e.target.value}))}
+                    />
+                  </div>
+                </div>
+
+                {/* Mode selector */}
+                <div style={{ marginBottom:16 }}>
+                  <label className="form-label">Cách tính số chuyến</label>
+                  <div style={{ display:'flex', gap:8 }}>
+                    {[
+                      { val:'per_day', label:'Mỗi ngày', desc:`Tạo ${apForm.flights_per_route} chuyến/tuyến mỗi ngày → nhiều chuyến hơn nhưng đều đặn` },
+                      { val:'total',   label:'Tổng cộng', desc:`Tổng ${apForm.flights_per_route} chuyến/tuyến cho cả khoảng ngày → phân bổ đều qua các ngày` },
+                    ].map(opt => (
+                      <div key={opt.val}
+                        onClick={() => setApForm(f => ({...f, mode: opt.val}))}
+                        style={{
+                          flex:1, padding:'10px 14px', borderRadius:8, cursor:'pointer', border:'2px solid',
+                          borderColor: apForm.mode === opt.val ? '#f59e0b' : 'var(--border)',
+                          background:  apForm.mode === opt.val ? 'rgba(245,158,11,0.08)' : 'var(--bg-input)',
+                        }}
+                      >
+                        <div style={{ fontWeight:700, fontSize:13, color: apForm.mode === opt.val ? '#f59e0b' : 'var(--text-primary)' }}>{opt.label}</div>
+                        <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>{opt.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Ước tính */}
+                {apForm.airport_code && apForm.start_date && apForm.end_date && (() => {
+                  const days = Math.max(0, Math.round((new Date(apForm.end_date) - new Date(apForm.start_date)) / 86400000) + 1)
+                  const dests = airports.length - 1
+                  const total = apForm.mode === 'per_day'
+                    ? dests * apForm.flights_per_route * days
+                    : dests * apForm.flights_per_route
+                  return (
+                    <div style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13 }}>
+                      📊 <strong>{dests}</strong> tuyến × <strong>{apForm.flights_per_route}</strong> chuyến
+                      {apForm.mode === 'per_day' ? <> × <strong>{days}</strong> ngày</> : <> (tổng)</>}
+                      {' '}= <strong style={{ color:'#f59e0b' }}>{total.toLocaleString('vi-VN')} chuyến</strong>
+                    </div>
+                  )
+                })()}
+
+                <button
+                  className="btn btn-primary" style={{ background:'#f59e0b', borderColor:'#f59e0b' }}
+                  disabled={apRunning || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
+                  onClick={async () => {
+                    setApRunning(true); setApResult(null)
+                    try {
+                      const { default: axios } = await import('axios')
+                      const token = localStorage.getItem('token')
+                      const r = await axios.post(
+                        'https://backend-log-function-2.onrender.com/api/admin/auto-flights/from-airport',
+                        { airport_code: apForm.airport_code, start_date: apForm.start_date, end_date: apForm.end_date, flights_per_route: apForm.flights_per_route, mode: apForm.mode },
+                        { headers: { Authorization: `Bearer ${token}` } }
+                      )
+                      setApResult({ ok: true, ...r.data })
+                    } catch(e) {
+                      setApResult({ ok: false, error: e?.response?.data?.error || e.message })
+                    } finally { setApRunning(false) }
+                  }}
+                >
+                  {apRunning ? '⏳ Đang tạo...' : `✈️ Tạo chuyến bay từ ${apForm.airport_code || '---'}`}
+                </button>
+
+                {apResult && (
+                  <div style={{ marginTop:12, padding:'10px 14px', borderRadius:8,
+                    background: apResult.ok ? 'rgba(5,150,105,0.1)' : 'rgba(220,38,38,0.1)',
+                    border: `1px solid ${apResult.ok ? '#059669' : '#dc2626'}`,
+                    color: apResult.ok ? '#059669' : '#dc2626', fontSize:13 }}>
+                    {apResult.ok
+                      ? `✅ Tạo ${apResult.created?.toLocaleString('vi-VN')} chuyến, bỏ qua ${apResult.skipped?.toLocaleString('vi-VN')} (${apResult.destinations} tuyến, ${apResult.airlines} hãng)`
+                      : `❌ ${apResult.error}`}
                   </div>
                 )}
               </div>
