@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react'
-import { adminApi } from '../api'
+import axios from 'axios'
+
+const api = axios.create({ baseURL: 'https://backend-log-function-2.onrender.com/api' })
+api.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('token')
+  if (token) cfg.headers.Authorization = `Bearer ${token}`
+  return cfg
+})
 
 export default function Newsletter() {
   const [subscribers, setSubscribers] = useState([])
