@@ -289,7 +289,7 @@ export default function SchedulesPage() {
   const [durCalcInfo, setDurCalcInfo]       = useState(null) // { km, mins } | { error }
   // ── Auto multi-airline mode ───────────────────────────────────────────────────
   const [scheduleMode, setScheduleMode]     = useState('single') // 'single' | 'auto' | 'airport'
-  const [apForm, setApForm] = useState({ airport_code:'', arr_airport_code:'', start_date:'', end_date:'', flights_per_route:2, mode:'per_day' })
+  const [apForm, setApForm] = useState({ airport_code:'', start_date:'', end_date:'', flights_per_route:2, mode:'per_day' })
   const [apRunning, setApRunning]   = useState(false)
   const [apResult,  setApResult]    = useState(null)
   const [autoStatus,   setAutoStatus]       = useState(null)
@@ -946,21 +946,7 @@ export default function SchedulesPage() {
                   </div>
                   <div>
                     <label className="form-label">
-                      Sân bay đến <span style={{ color:'var(--text-muted)', fontWeight:400 }}>(tuỳ chọn — để trống = tất cả điểm đến)</span>
-                    </label>
-                    <select className="form-control"
-                      value={apForm.arr_airport_code}
-                      onChange={e => setApForm(f => ({...f, arr_airport_code: e.target.value}))}
-                    >
-                      <option value="">-- Tất cả điểm đến --</option>
-                      {airports.filter(a => a.code !== apForm.airport_code).map(a => (
-                        <option key={a.id} value={a.code}>{a.code} — {a.name} ({a.city})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="form-label">
-                      {apForm.arr_airport_code ? 'Số chuyến/hãng/ngày *' : 'Số chuyến/tuyến *'}
+                      {apForm.mode === 'all_airlines' ? 'Số chuyến/hãng/ngày *' : 'Số chuyến/tuyến *'}
                     </label>
                     <input className="form-control" type="number" min={1} max={10}
                       value={apForm.flights_per_route}
@@ -988,8 +974,9 @@ export default function SchedulesPage() {
                   <label className="form-label">Cách tính số chuyến</label>
                   <div style={{ display:'flex', gap:8 }}>
                     {[
-                      { val:'per_day', label:'Mỗi ngày', desc:`Tạo ${apForm.flights_per_route} chuyến/tuyến mỗi ngày → nhiều chuyến hơn nhưng đều đặn` },
-                      { val:'total',   label:'Tổng cộng', desc:`Tổng ${apForm.flights_per_route} chuyến/tuyến cho cả khoảng ngày → phân bổ đều qua các ngày` },
+                      { val:'per_day',     label:'Mỗi ngày',     desc:`Xoay vòng hãng, ${apForm.flights_per_route} chuyến/tuyến/ngày` },
+                      { val:'total',       label:'Tổng cộng',    desc:`Xoay vòng hãng, tổng ${apForm.flights_per_route} chuyến/tuyến trải đều qua các ngày` },
+                      { val:'all_airlines',label:'Tất cả hãng',  desc:`Mỗi hãng phù hợp đều bay mỗi tuyến — ${apForm.flights_per_route} chuyến/hãng/ngày` },
                     ].map(opt => (
                       <div key={opt.val}
                         onClick={() => setApForm(f => ({...f, mode: opt.val}))}
@@ -1008,20 +995,18 @@ export default function SchedulesPage() {
 
                 {/* Ước tính */}
                 {apForm.airport_code && apForm.start_date && apForm.end_date && (() => {
-                  const days       = Math.max(0, Math.round((new Date(apForm.end_date) - new Date(apForm.start_date)) / 86400000) + 1)
-                  const isSingle   = !!apForm.arr_airport_code
-                  // single route: ước tính số hãng ~ 10 (phụ thuộc vào quốc gia, hiện tổng airlines)
-                  const estAirlines = Math.round(airports.length * 0.2) // ước khoảng 20% hãng bay được tuyến đó
-                  const dests      = isSingle ? 1 : airports.length - 1
-                  const total      = isSingle
-                    ? estAirlines * apForm.flights_per_route * days
+                  const days  = Math.max(0, Math.round((new Date(apForm.end_date) - new Date(apForm.start_date)) / 86400000) + 1)
+                  const dests = airports.length - 1
+                  const estAirlines = Math.round(airports.length * 0.15) // ~15% hãng phù hợp trung bình mỗi tuyến
+                  const total = apForm.mode === 'all_airlines'
+                    ? dests * estAirlines * apForm.flights_per_route * days
                     : apForm.mode === 'per_day'
                       ? dests * apForm.flights_per_route * days
                       : dests * apForm.flights_per_route
                   return (
                     <div style={{ background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13 }}>
-                      {isSingle
-                        ? <>📊 <strong>~{estAirlines} hãng</strong> × <strong>{apForm.flights_per_route}</strong> chuyến/ngày × <strong>{days}</strong> ngày ≈ <strong style={{ color:'#f59e0b' }}>~{total.toLocaleString('vi-VN')} chuyến</strong> <span style={{ color:'var(--text-muted)' }}>(số hãng thực tế tính theo quốc gia)</span></>
+                      {apForm.mode === 'all_airlines'
+                        ? <>📊 <strong>{dests}</strong> tuyến × <strong>~{estAirlines} hãng</strong> × <strong>{apForm.flights_per_route}</strong> chuyến/ngày × <strong>{days}</strong> ngày ≈ <strong style={{ color:'#f59e0b' }}>~{total.toLocaleString('vi-VN')} chuyến</strong> <span style={{ color:'var(--text-muted)' }}>(số hãng thực tế phụ thuộc quốc gia)</span></>
                         : <><strong>{dests}</strong> tuyến × <strong>{apForm.flights_per_route}</strong> chuyến{apForm.mode === 'per_day' ? <> × <strong>{days}</strong> ngày</> : <> (tổng)</>} = <strong style={{ color:'#f59e0b' }}>{total.toLocaleString('vi-VN')} chuyến</strong></>
                       }
                     </div>
@@ -1038,7 +1023,7 @@ export default function SchedulesPage() {
                       const token = localStorage.getItem('token')
                       const r = await axios.post(
                         'https://backend-log-function-2.onrender.com/api/admin/auto-flights/from-airport',
-                        { airport_code: apForm.airport_code, arr_airport_code: apForm.arr_airport_code || undefined, start_date: apForm.start_date, end_date: apForm.end_date, flights_per_route: apForm.flights_per_route, mode: apForm.mode },
+                        { airport_code: apForm.airport_code, start_date: apForm.start_date, end_date: apForm.end_date, flights_per_route: apForm.flights_per_route, mode: apForm.mode },
                         { headers: { Authorization: `Bearer ${token}` } }
                       )
                       setApResult({ ok: true, ...r.data })
@@ -1047,7 +1032,7 @@ export default function SchedulesPage() {
                     } finally { setApRunning(false) }
                   }}
                 >
-                  {apRunning ? '⏳ Đang tạo...' : `✈️ Tạo chuyến bay từ ${apForm.airport_code || '---'}${apForm.arr_airport_code ? ` → ${apForm.arr_airport_code}` : ''}`}
+                  {apRunning ? '⏳ Đang tạo...' : `✈️ Tạo chuyến bay từ ${apForm.airport_code || '---'}`}
                 </button>
 
                 {apResult && (
