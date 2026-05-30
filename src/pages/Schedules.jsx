@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll } from '../api'
 import {
@@ -294,6 +294,7 @@ export default function SchedulesPage() {
   const [autoRunning,  setAutoRunning]      = useState(false)
   const [autoRunningAll, setAutoRunningAll] = useState(false)
   const [showRunAllConfirm, setShowRunAllConfirm] = useState(false)
+  const stopRunAllRef = useRef(false)
   const [autoMsg,      setAutoMsg]          = useState('')
   const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', flights_per_route:'3', advance_days:'30', is_enabled: false })
 
@@ -477,28 +478,40 @@ export default function SchedulesPage() {
 
   const handleRunAll = async () => {
     setShowRunAllConfirm(false)
+    stopRunAllRef.current = false
     setAutoRunningAll(true)
     let totalCreated = 0
     let totalSkipped = 0
     let round = 0
     try {
       while (true) {
+        if (stopRunAllRef.current) {
+          setAutoMsg(`⏹ Đã dừng sau ${round} đợt: ${totalCreated} chuyến đã tạo`)
+          break
+        }
         round++
         setAutoMsg(`⏳ Đợt ${round}: đang tạo... (${totalCreated} chuyến đã tạo)`)
         const r = await runAutoFlightBatch(200)
         totalCreated += r.data.created || 0
         totalSkipped += r.data.skipped || 0
-        // Nếu đợt này không tạo được gì → đã xong toàn bộ
-        if ((r.data.created || 0) === 0) break
+        if ((r.data.created || 0) === 0) {
+          setAutoMsg(`✓ Hoàn tất ${round} đợt: ${totalCreated} chuyến mới, ${totalSkipped} đã có sẵn`)
+          break
+        }
       }
-      setAutoMsg(`✓ Hoàn tất ${round} đợt: ${totalCreated} chuyến mới, ${totalSkipped} đã có sẵn`)
       loadFlights()
       loadAutoStatus()
     } catch (e) {
       setAutoMsg(`Lỗi sau ${totalCreated} chuyến: ` + (e.response?.data?.error || e.message))
     } finally {
       setAutoRunningAll(false)
+      stopRunAllRef.current = false
     }
+  }
+
+  const handleStopRunAll = () => {
+    stopRunAllRef.current = true
+    setAutoMsg('⏹ Đang dừng sau đợt hiện tại...')
   }
 
   // ── Derived values ───────────────────────────────────────────────────────────
@@ -867,6 +880,17 @@ export default function SchedulesPage() {
                   >
                     <LuZap size={12}/> {autoRunningAll ? 'Đang tạo toàn bộ...' : 'Chạy toàn bộ'}
                   </button>
+                  {autoRunningAll && (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={handleStopRunAll}
+                      disabled={stopRunAllRef.current}
+                      style={{ fontSize:13, display:'flex', alignItems:'center', gap:5, background:'rgba(234,179,8,0.1)', color:'#b45309', border:'1px solid #b45309' }}
+                    >
+                      ⏹ Dừng lại
+                    </button>
+                  )}
                 </div>
 
                 {autoMsg && (
