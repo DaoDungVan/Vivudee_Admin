@@ -293,6 +293,7 @@ export default function SchedulesPage() {
   const [autoSaving,   setAutoSaving]       = useState(false)
   const [autoRunning,  setAutoRunning]      = useState(false)
   const [autoRunningAll, setAutoRunningAll] = useState(false)
+  const [showRunAllConfirm, setShowRunAllConfirm] = useState(false)
   const [autoMsg,      setAutoMsg]          = useState('')
   const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', flights_per_route:'3', advance_days:'30', is_enabled: false })
 
@@ -475,7 +476,7 @@ export default function SchedulesPage() {
   }
 
   const handleRunAll = async () => {
-    if (!window.confirm('Hệ thống sẽ tạo toàn bộ chuyến bay theo từng đợt 200 chuyến cho đến khi hoàn tất. Tiếp tục?')) return
+    setShowRunAllConfirm(false)
     setAutoRunningAll(true)
     let totalCreated = 0
     let totalSkipped = 0
@@ -861,7 +862,7 @@ export default function SchedulesPage() {
                     type="button"
                     className="btn btn-sm"
                     disabled={autoRunning || autoRunningAll}
-                    onClick={handleRunAll}
+                    onClick={() => setShowRunAllConfirm(true)}
                     style={{ fontSize:13, display:'flex', alignItems:'center', gap:5, background:'rgba(220,38,38,0.08)', color:'#dc2626', border:'1px solid #dc2626' }}
                   >
                     <LuZap size={12}/> {autoRunningAll ? 'Đang tạo toàn bộ...' : 'Chạy toàn bộ'}
@@ -1389,6 +1390,36 @@ export default function SchedulesPage() {
 
         </div>{/* end two-column flex */}
       </div>
+
+      {/* ════════ Run All Confirmation Modal ════════ */}
+      {showRunAllConfirm && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowRunAllConfirm(false)}>
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <LuZap size={16} style={{ color:'#dc2626' }}/> Xác nhận chạy toàn bộ
+              </div>
+            </div>
+            <div className="modal-body">
+              <p style={{ margin:'0 0 8px', color:'var(--text-secondary)', fontSize:14 }}>
+                Hệ thống sẽ tạo toàn bộ chuyến bay trải đều qua tất cả ngày đã cấu hình.
+              </p>
+              <p style={{ margin:0, color:'var(--text-muted)', fontSize:13 }}>
+                Các slot đã tồn tại sẽ được bỏ qua tự động.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowRunAllConfirm(false)}>Huỷ</button>
+              <button
+                className="btn btn-danger"
+                onClick={handleRunAll}
+              >
+                <LuZap size={13} style={{ marginRight:4 }}/> Xác nhận chạy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ════════ Confirmation Modal ════════ */}
       {confirmAction && (
