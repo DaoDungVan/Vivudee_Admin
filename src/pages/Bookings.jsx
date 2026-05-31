@@ -164,7 +164,7 @@ export default function BookingsPage() {
                           </div>
                           {b.departure_time && (
                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                              {new Date(b.departure_time).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                              {new Date(b.departure_time).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' })}
                             </div>
                           )}
                         </td>
@@ -227,7 +227,7 @@ export default function BookingsPage() {
                     ['Email',         detail.contact_email || '—'],
                     ['SĐT',           detail.contact_phone || '—'],
                     ['Chuyến đi',    `${detail.outbound_flight || '—'} (${detail.from_code || ''}→${detail.to_code || ''})`],
-                    ['Khởi hành',    detail.outbound_dep_time ? new Date(detail.outbound_dep_time).toLocaleString('vi-VN') : (detail.departure_time ? new Date(detail.departure_time).toLocaleString('vi-VN') : '—')],
+                    ['Khởi hành',    detail.outbound_dep_time ? new Date(detail.outbound_dep_time).toLocaleString('vi-VN', { timeZone: 'UTC' }) : (detail.departure_time ? new Date(detail.departure_time).toLocaleString('vi-VN', { timeZone: 'UTC' }) : '—')],
                     ['Hãng bay',     detail.outbound_airline || '—'],
                     ['Người lớn',    detail.total_adults ?? '—'],
                     ['Trẻ em',        detail.total_children ?? '—'],
