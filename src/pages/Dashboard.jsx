@@ -186,7 +186,7 @@ export default function DashboardPage() {
         setStatsError(err?.response?.data?.error || 'Lỗi tải thống kê')
         console.error('[stats]', err?.response?.data || err)
       })
-    Promise.all([
+    Promise.allSettled([
       getFlights({ page: 1, limit: 1, show_hidden: true }),
       getUsers({ page: 1, limit: 1 }),
       getBookings({ page: 1, limit: 8 }),
@@ -194,19 +194,26 @@ export default function DashboardPage() {
       getAdminRefunds({ status: 'pending', limit: 1, page: 1 }),
       getAdminDateChanges({ status: 'pending', limit: 1, page: 1 }),
     ])
-      .then(([flightRes, userRes, bookingRes, todayFlightRes, refundRes, dcRes]) => {
+      .then(([flightR, userR, bookingR, todayR, refundR, dcR]) => {
+        const val = (r) => r.status === 'fulfilled' ? r.value : null
+        const flightRes    = val(flightR)
+        const userRes      = val(userR)
+        const bookingRes   = val(bookingR)
+        const todayFlightRes = val(todayR)
+        const refundRes    = val(refundR)
+        const dcRes        = val(dcR)
+
         setCounts({
-          flights:  flightRes.data?.pagination?.total  ?? 0,
-          users:    userRes.data?.pagination?.total    ?? 0,
-          bookings: bookingRes.data?.pagination?.total ?? 0,
+          flights:  flightRes?.data?.pagination?.total  ?? 0,
+          users:    userRes?.data?.pagination?.total    ?? 0,
+          bookings: bookingRes?.data?.pagination?.total ?? 0,
         })
-        setRecentBookings(bookingRes.data?.data || [])
-        setTodayFlights(todayFlightRes.data?.data || [])
-        setTodayFlightTotal(todayFlightRes.data?.pagination?.total ?? 0)
-        setPendingRefunds(refundRes.data?.pagination?.total ?? 0)
-        setPendingDateChanges(dcRes.data?.data?.pagination?.total ?? 0)
+        setRecentBookings(bookingRes?.data?.data || [])
+        setTodayFlights(todayFlightRes?.data?.data || [])
+        setTodayFlightTotal(todayFlightRes?.data?.pagination?.total ?? 0)
+        setPendingRefunds(refundRes?.data?.pagination?.total ?? 0)
+        setPendingDateChanges(dcRes?.data?.data?.pagination?.total ?? 0)
       })
-      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
