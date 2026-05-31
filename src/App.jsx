@@ -11,6 +11,7 @@ import BookingsPage from './pages/Bookings'
 import CouponsPage from './pages/Coupons'
 import ChatPage from './pages/Chat'
 import RefundsPage from './pages/Refunds'
+import DateChangesPage from './pages/DateChanges'
 import SystemPage from './pages/System'
 import NewsletterPage from './pages/Newsletter'
 import SchedulesPage from './pages/Schedules'
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="coupons" element={<CouponsPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="refunds" element={<RefundsPage />} />
+            <Route path="date-changes" element={<DateChangesPage />} />
             <Route path="system" element={<SystemPage />} />
             <Route path="newsletter" element={<NewsletterPage />} />
           </Route>

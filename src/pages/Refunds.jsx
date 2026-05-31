@@ -31,6 +31,34 @@ const fmtCurrency = (n) => {
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('vi-VN') : '—'
 
+const parsePolicy = (raw) => {
+  if (!raw) return null
+  try {
+    const p = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return p
+  } catch { return null }
+}
+
+const getRefundPct = (r) => {
+  const policy = parsePolicy(r.refund_policy_applied)
+  if (policy?.pct != null) return policy.pct
+  return null
+}
+
+const getOriginalAmount = (r) => {
+  const pct = getRefundPct(r)
+  const gross = Number(r.refund_amount)
+  if (pct && pct > 0 && gross > 0) return Math.round(gross / (pct / 100))
+  return null
+}
+
+const REFUND_TYPE_LABEL = {
+  full:                'Toàn bộ vé',
+  partial_leg:         'Một chiều',
+  partial_passenger:   'Một hành khách',
+  date_change_refund:  'Bù đổi ngày',
+}
+
 const SEARCH_FETCH_LIMIT = 500
 
 const matchesSearch = (r, kw) => {
@@ -195,8 +223,36 @@ export default function RefundsPage() {
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{r.user_name || '—'}</div>
                   <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{r.user_email}</div>
                 </td>
-                <td style={{ fontSize: 12 }}>{r.refund_type || '—'}</td>
-                <td style={{ fontWeight: 700, color: '#16a34a' }}>{fmtCurrency(r.refund_amount)}</td>
+                <td style={{ fontSize: 12 }}>
+                  <div style={{ fontWeight: 600 }}>
+                    {REFUND_TYPE_LABEL[r.refund_type] || r.refund_type || '—'}
+                  </div>
+                  {getRefundPct(r) != null && (
+                    <div style={{ marginTop: 2 }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '1px 6px',
+                        borderRadius: 6, background: 'rgba(22,163,74,0.1)', color: '#16a34a'
+                      }}>
+                        Hoàn {getRefundPct(r)}%
+                      </span>
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 13 }}>
+                    {fmtCurrency(r.net_refund_amount ?? r.refund_amount)}
+                  </div>
+                  {getOriginalAmount(r) != null && (
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      Gốc: {fmtCurrency(getOriginalAmount(r))}
+                    </div>
+                  )}
+                  {Number(r.admin_fee) > 0 && (
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                      Phí: {fmtCurrency(r.admin_fee)}
+                    </div>
+                  )}
+                </td>
                 <td style={{ fontSize: 12, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.reason}>
                   {r.reason || '—'}
                 </td>

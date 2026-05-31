@@ -24,7 +24,8 @@ const navItems = [
   { to: '/bookings', icon: <LuTicket size={18}/>,          label: 'Đặt Vé' },
   { to: '/coupons',  icon: <LuTag size={18}/>,             label: 'Coupon' },
   { to: '/chat',     icon: <LuMessageSquare size={18}/>,   label: 'Hỗ Trợ Chat' },
-  { to: '/refunds',  icon: <LuUndo2 size={18}/>,           label: 'Hoàn Tiền' },
+  { to: '/refunds',      icon: <LuUndo2 size={18}/>,        label: 'Hoàn Tiền' },
+  { to: '/date-changes', icon: <LuCalendarDays size={18}/>, label: 'Đổi Ngày Bay' },
   { to: '/newsletter', icon: <LuMail size={18}/>,           label: 'Newsletter' },
   { to: '/system',   icon: <LuSettings size={18}/>,        label: 'Hệ Thống' },
 ]

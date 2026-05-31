@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { getStatistics, getFlights, getUsers, getBookings, getAdminRefunds } from '../api'
+import { getStatistics, getFlights, getUsers, getBookings, getAdminRefunds, getAdminDateChanges } from '../api'
 import { useAuth } from '../context/AuthContext'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -165,7 +165,8 @@ export default function DashboardPage() {
   const [todayFlights, setTodayFlights]         = useState([])
   const [todayFlightTotal, setTodayFlightTotal] = useState(0)
   const [statsError, setStatsError]             = useState(null)
-  const [pendingRefunds, setPendingRefunds]     = useState(0)
+  const [pendingRefunds, setPendingRefunds]         = useState(0)
+  const [pendingDateChanges, setPendingDateChanges] = useState(0)
 
   const load = useCallback((silent = false) => {
     if (!silent) setLoading(true)
@@ -191,8 +192,9 @@ export default function DashboardPage() {
       getBookings({ page: 1, limit: 8 }),
       getFlights({ page: 1, limit: 8, departure_date: todayStr, show_hidden: true }),
       getAdminRefunds({ status: 'pending', limit: 1, page: 1 }),
+      getAdminDateChanges({ status: 'pending', limit: 1, page: 1 }),
     ])
-      .then(([flightRes, userRes, bookingRes, todayFlightRes, refundRes]) => {
+      .then(([flightRes, userRes, bookingRes, todayFlightRes, refundRes, dcRes]) => {
         setCounts({
           flights:  flightRes.data?.pagination?.total  ?? 0,
           users:    userRes.data?.pagination?.total    ?? 0,
@@ -202,6 +204,7 @@ export default function DashboardPage() {
         setTodayFlights(todayFlightRes.data?.data || [])
         setTodayFlightTotal(todayFlightRes.data?.pagination?.total ?? 0)
         setPendingRefunds(refundRes.data?.pagination?.total ?? 0)
+        setPendingDateChanges(dcRes.data?.data?.pagination?.total ?? 0)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -335,17 +338,30 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* ── Alert banner ── */}
+            {/* ── Alert banners ── */}
             {pendingRefunds > 0 && (
               <div style={{
                 background: 'var(--danger-bg)', border: '1px solid var(--danger)',
-                borderRadius: 10, padding: '10px 16px', marginBottom: 16,
+                borderRadius: 10, padding: '10px 16px', marginBottom: 10,
                 display: 'flex', alignItems: 'center', gap: 10,
               }}>
                 <LuTriangleAlert size={16} color="var(--danger)" style={{ flexShrink: 0 }}/>
                 <span style={{ fontSize: 13 }}>
                   <b style={{ color: 'var(--danger)' }}>{pendingRefunds} yêu cầu hoàn tiền</b> đang chờ xử lý —{' '}
                   <Link to="/refunds" style={{ color: 'var(--danger)', fontWeight: 700, textDecoration: 'underline' }}>Xem ngay</Link>
+                </span>
+              </div>
+            )}
+            {pendingDateChanges > 0 && (
+              <div style={{
+                background: 'var(--warning-bg, #fef3c7)', border: '1px solid var(--warning, #f59e0b)',
+                borderRadius: 10, padding: '10px 16px', marginBottom: 16,
+                display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                <LuCalendarDays size={16} color="var(--warning, #d97706)" style={{ flexShrink: 0 }}/>
+                <span style={{ fontSize: 13 }}>
+                  <b style={{ color: 'var(--warning, #d97706)' }}>{pendingDateChanges} yêu cầu đổi ngày bay</b> đang chờ duyệt —{' '}
+                  <Link to="/date-changes" style={{ color: 'var(--warning, #d97706)', fontWeight: 700, textDecoration: 'underline' }}>Xem ngay</Link>
                 </span>
               </div>
             )}

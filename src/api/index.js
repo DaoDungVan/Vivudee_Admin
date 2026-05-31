@@ -157,6 +157,11 @@ export const approveRefund        = (code, adminNotes = '') => api.post(`/admin/
 export const completeRefund       = (code) => api.post(`/admin/refunds/${code}/complete`, {})
 export const rejectRefund         = (code, reason) => api.post(`/admin/refunds/${code}/reject`, { reason })
 
+// ─── Date Changes ──────────────────────────────────────────────────────────
+export const getAdminDateChanges  = (params) => api.get('/date-changes/admin', { params })
+export const approveDateChange    = (code, adminNotes = '') => api.post(`/date-changes/${code}/approve`, { admin_notes: adminNotes })
+export const rejectDateChange     = (code, reason) => api.post(`/date-changes/${code}/reject`, { reason })
+
 // Chat support
 export const getChatConversations = (params) => api.get('/admin/chat/conversations', { params })
 export const getChatConversationById = (id) => api.get(`/admin/chat/conversations/${id}`)
