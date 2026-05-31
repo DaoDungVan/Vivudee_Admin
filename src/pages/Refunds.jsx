@@ -235,11 +235,10 @@ export default function RefundsPage() {
                             Hoàn {pct}%
                           </div>
                         ) : (
-                          <div style={{ fontWeight: 600 }}>—</div>
+                          <div style={{ fontWeight: 600, fontSize: 12 }}>
+                            {REFUND_TYPE_LABEL[r.refund_type] || r.refund_type || '—'}
+                          </div>
                         )}
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                          {REFUND_TYPE_LABEL[r.refund_type] || r.refund_type || ''}
-                        </div>
                       </>
                     )
                   })()}
