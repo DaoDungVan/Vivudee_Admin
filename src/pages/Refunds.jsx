@@ -38,13 +38,18 @@ const parsePolicy = (raw) => {
 
 const getRefundPct = (r) => {
   const p = parsePolicy(r.refund_policy_applied)
-  // backend lưu key là refund_percent (e.g. {"name":"full_refund","refund_percent":100})
+  // backend lưu key là refundPercent (camelCase)
+  if (p?.refundPercent != null) return p.refundPercent
   if (p?.refund_percent != null) return p.refund_percent
   if (p?.pct != null) return p.pct
+
+  // Fallback: tính từ số tiền nếu policy không parse được
+  const net = Number(r.net_refund_amount ?? r.refund_amount)
+  const total = Number(r.booking_total_price)
+  if (net > 0 && total > 0) return Math.round((net / total) * 100)
   return null
 }
 
-// Dùng booking_total_price từ API (đã có sẵn trong query), không cần tính ngược
 const getOriginalAmount = (r) =>
   r.booking_total_price ? Number(r.booking_total_price) : null
 
@@ -220,19 +225,24 @@ export default function RefundsPage() {
                   <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{r.user_email}</div>
                 </td>
                 <td style={{ fontSize: 12 }}>
-                  <div style={{ fontWeight: 600 }}>
-                    {REFUND_TYPE_LABEL[r.refund_type] || r.refund_type || '—'}
-                  </div>
-                  {getRefundPct(r) != null && (
-                    <div style={{ marginTop: 2 }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 700, padding: '1px 6px',
-                        borderRadius: 6, background: 'rgba(22,163,74,0.1)', color: '#16a34a'
-                      }}>
-                        Hoàn {getRefundPct(r)}%
-                      </span>
-                    </div>
-                  )}
+                  {(() => {
+                    const pct = getRefundPct(r)
+                    const pctColor = pct === 100 ? '#16a34a' : pct >= 80 ? '#2563eb' : pct >= 50 ? '#d97706' : '#dc2626'
+                    return (
+                      <>
+                        {pct != null ? (
+                          <div style={{ fontWeight: 700, fontSize: 13, color: pctColor }}>
+                            Hoàn {pct}%
+                          </div>
+                        ) : (
+                          <div style={{ fontWeight: 600 }}>—</div>
+                        )}
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                          {REFUND_TYPE_LABEL[r.refund_type] || r.refund_type || ''}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </td>
                 <td>
                   <div style={{ fontWeight: 700, color: '#16a34a', fontSize: 13 }}>
