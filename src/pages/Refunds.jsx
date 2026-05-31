@@ -33,24 +33,20 @@ const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('vi-VN') : '—'
 
 const parsePolicy = (raw) => {
   if (!raw) return null
-  try {
-    const p = typeof raw === 'string' ? JSON.parse(raw) : raw
-    return p
-  } catch { return null }
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return null }
 }
 
 const getRefundPct = (r) => {
-  const policy = parsePolicy(r.refund_policy_applied)
-  if (policy?.pct != null) return policy.pct
+  const p = parsePolicy(r.refund_policy_applied)
+  // backend lưu key là refund_percent (e.g. {"name":"full_refund","refund_percent":100})
+  if (p?.refund_percent != null) return p.refund_percent
+  if (p?.pct != null) return p.pct
   return null
 }
 
-const getOriginalAmount = (r) => {
-  const pct = getRefundPct(r)
-  const gross = Number(r.refund_amount)
-  if (pct && pct > 0 && gross > 0) return Math.round(gross / (pct / 100))
-  return null
-}
+// Dùng booking_total_price từ API (đã có sẵn trong query), không cần tính ngược
+const getOriginalAmount = (r) =>
+  r.booking_total_price ? Number(r.booking_total_price) : null
 
 const REFUND_TYPE_LABEL = {
   full:                'Toàn bộ vé',
