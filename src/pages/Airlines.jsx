@@ -141,7 +141,7 @@ export default function AirlinesPage() {
                       </td>
                       <td>
                         {a.logo_dark
-                          ? <img src={a.logo_dark} alt={`${a.code} dark`} style={{ height: 28, objectFit: 'contain', borderRadius: 4, background: '#1a1a2e', padding: 2 }} onError={e => e.target.style.display='none'} />
+                          ? <img src={a.logo_dark} alt={`${a.code} dark`} style={{ height: 28, objectFit: 'contain', borderRadius: 4, background: '#1d2235', padding: 2 }} onError={e => e.target.style.display='none'} />
                           : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>}
                       </td>
                       <td><span className="td-mono">{a.code}</span></td>
@@ -215,7 +215,7 @@ export default function AirlinesPage() {
               </div>
               {form.logo_dark && (
                 <div className="form-group full" style={{ display:'flex', alignItems:'center', gap:16 }}>
-                  <div style={{ background:'#1a1a2e', borderRadius:8, padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'center', minWidth:80 }}>
+                  <div style={{ background:'#1d2235', borderRadius:8, padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'center', minWidth:80 }}>
                     <img src={form.logo_dark} alt="dark preview" style={{ height:40, objectFit:'contain' }} onError={e=>e.target.style.display='none'} />
                   </div>
                   <span style={{ fontSize:12, color:'var(--text-muted)' }}>Xem trước trên nền tối (dark mode)</span>
