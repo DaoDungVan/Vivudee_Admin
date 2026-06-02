@@ -205,7 +205,7 @@ const formatRawDateTime = (iso) => {
 
 const createEmptyFlight = () => ({
   flight_number: '', airline_id: '', departure_airport_id: '', arrival_airport_id: '',
-  departure_time: '', arrival_time: '', duration_minutes: '', seats: buildSeatFormList(),
+  departure_time: '', arrival_time: '', duration_minutes: '', gate: '', seats: buildSeatFormList(),
 })
 
 const buildFlightPayload = (form) => ({
@@ -216,6 +216,7 @@ const buildFlightPayload = (form) => ({
   departure_time: form.departure_time || '',
   arrival_time: form.arrival_time || '',
   duration_minutes: form.duration_minutes || '',
+  gate: form.gate || null,
   seats: Array.isArray(form.seats) ? form.seats.map(s => ({
     class: s.class, total_seats: s.total_seats, base_price: s.base_price,
     baggage_included_kg: s.baggage_included_kg, carry_on_kg: s.carry_on_kg,
@@ -469,6 +470,7 @@ export default function FlightsPage() {
       departure_time: flight.departure_time?.replace(' ', 'T').slice(0, 16) || '',
       arrival_time: flight.arrival_time?.replace(' ', 'T').slice(0, 16) || '',
       duration_minutes: flight.duration_minutes,
+      gate: flight.gate || '',
       seats: buildSeatFormList(flight.seats),
     })
     setError('')
@@ -636,7 +638,7 @@ export default function FlightsPage() {
         <div className="toolbar">
           <div className="search-box">
             <span className="search-icon"><LuSearch size={16}/></span>
-            <input placeholder="Tìm số hiệu bay..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+            <input placeholder="Tìm số hiệu, hãng bay, sân bay, thành phố..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
           </div>
           <select className="filter-select" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1) }}>
             <option value="">Tất cả trạng thái</option>
@@ -929,6 +931,21 @@ export default function FlightsPage() {
                 )}
                 <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>
                   Có thể điền chỉ ô phút (ví dụ 90) hoặc kết hợp giờ + phút (1 giờ 30 phút)
+                </div>
+              </div>
+
+              {/* Gate */}
+              <div className="form-group">
+                <label className="form-label">Cổng khởi hành (Gate)</label>
+                <input
+                  className="form-control"
+                  value={form.gate}
+                  onChange={e => setField('gate', e.target.value.toUpperCase())}
+                  placeholder="VD: A12, B3 (để trống nếu chưa có)"
+                  maxLength={10}
+                />
+                <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:4 }}>
+                  Khi lưu, hệ thống tự động cập nhật gate trong boarding pass của hành khách đã check-in và gửi email thông báo.
                 </div>
               </div>
 
