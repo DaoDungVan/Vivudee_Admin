@@ -3,7 +3,7 @@ import { getAirlines, createAirline, updateAirline, updateAirlineStatus, getAirp
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { LuPlaneTakeoff, LuSearch, LuRefreshCw, LuPencil, LuCheck, LuLock, LuX, LuTriangleAlert, LuHourglass, LuSave } from 'react-icons/lu'
 
-const empty = { code: '', name: '', country: '', logo_url: '' }
+const empty = { code: '', name: '', country: '', logo_url: '', logo_dark: '' }
 const SEARCH_FETCH_LIMIT = 500
 
 const matchesAirlineSearch = (airline, keyword) => {
@@ -73,7 +73,7 @@ export default function AirlinesPage() {
   }, [])
 
   const openCreate = () => { setForm(empty); setError(''); setModal('create'); setEditItem(null) }
-  const openEdit   = (a) => { setEditItem(a); setForm({ code: a.code, name: a.name, country: a.country || '', logo_url: a.logo_url || '' }); setError(''); setModal('edit') }
+  const openEdit   = (a) => { setEditItem(a); setForm({ code: a.code, name: a.name, country: a.country || '', logo_url: a.logo_url || '', logo_dark: a.logo_dark || '' }); setError(''); setModal('edit') }
 
   const handleSave = async () => {
     setSaving(true); setError('')
@@ -129,16 +129,20 @@ export default function AirlinesPage() {
             <div className="table-wrapper">
               <table>
                 <thead>
-                  <tr><th>Logo</th><th>Mã hãng</th><th>Tên hãng bay</th><th>Quốc gia</th><th>Ngày tạo</th><th>Trạng thái</th><th>Hành động</th></tr>
+                  <tr><th>Logo (Light)</th><th>Logo Dark</th><th>Mã hãng</th><th>Tên hãng bay</th><th>Quốc gia</th><th>Ngày tạo</th><th>Trạng thái</th><th>Hành động</th></tr>
                 </thead>
                 <tbody>
                   {data.map(a => (
                     <tr key={a.id}>
                       <td>
                         {a.logo_url
-                          ? <img src={a.logo_url} alt={a.code} style={{ height: 28, objectFit: 'contain', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
-                          : <div style={{ width: 40, height: 28, background: 'var(--bg-input)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text-muted)' }}>N/A</div>
-                        }
+                          ? <img src={a.logo_url} alt={a.code} style={{ height: 28, objectFit: 'contain', borderRadius: 4, background: '#fff', padding: 2 }} onError={e => e.target.style.display='none'} />
+                          : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      <td>
+                        {a.logo_dark
+                          ? <img src={a.logo_dark} alt={`${a.code} dark`} style={{ height: 28, objectFit: 'contain', borderRadius: 4, background: '#1a1a2e', padding: 2 }} onError={e => e.target.style.display='none'} />
+                          : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>}
                       </td>
                       <td><span className="td-mono">{a.code}</span></td>
                       <td style={{ fontWeight: 500 }}>{a.name}</td>
@@ -190,8 +194,33 @@ export default function AirlinesPage() {
                   {countries.map(c => <option key={c} value={c} />)}
                 </datalist>
               </div>
-              <div className="form-group full"><label className="form-label">URL Logo</label><input className="form-control" value={form.logo_url} onChange={e=>sf('logo_url',e.target.value)} placeholder="https://..." /></div>
-              {form.logo_url && <div className="form-group full" style={{ textAlign: 'center' }}><img src={form.logo_url} alt="preview" style={{ height: 50, objectFit: 'contain' }} onError={e=>e.target.style.display='none'} /></div>}
+              {/* Logo light (logo_url) */}
+              <div className="form-group full">
+                <label className="form-label">URL Logo (Light mode)</label>
+                <input className="form-control" value={form.logo_url} onChange={e=>sf('logo_url',e.target.value)} placeholder="https://..." />
+              </div>
+              {form.logo_url && (
+                <div className="form-group full" style={{ display:'flex', alignItems:'center', gap:16 }}>
+                  <div style={{ background:'#fff', borderRadius:8, padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'center', minWidth:80 }}>
+                    <img src={form.logo_url} alt="light preview" style={{ height:40, objectFit:'contain' }} onError={e=>e.target.style.display='none'} />
+                  </div>
+                  <span style={{ fontSize:12, color:'var(--text-muted)' }}>Xem trước trên nền trắng (light mode)</span>
+                </div>
+              )}
+
+              {/* Logo dark */}
+              <div className="form-group full">
+                <label className="form-label">URL Logo (Dark mode)</label>
+                <input className="form-control" value={form.logo_dark} onChange={e=>sf('logo_dark',e.target.value)} placeholder="https://... (để trống nếu dùng chung logo)" />
+              </div>
+              {form.logo_dark && (
+                <div className="form-group full" style={{ display:'flex', alignItems:'center', gap:16 }}>
+                  <div style={{ background:'#1a1a2e', borderRadius:8, padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'center', minWidth:80 }}>
+                    <img src={form.logo_dark} alt="dark preview" style={{ height:40, objectFit:'contain' }} onError={e=>e.target.style.display='none'} />
+                  </div>
+                  <span style={{ fontSize:12, color:'var(--text-muted)' }}>Xem trước trên nền tối (dark mode)</span>
+                </div>
+              )}
             </div>
             <div className="form-footer">
               <button className="btn btn-secondary" onClick={() => setModal(null)}>Huỷ</button>
