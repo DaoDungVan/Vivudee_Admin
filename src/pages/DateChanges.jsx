@@ -3,23 +3,25 @@ import { getAdminDateChanges, approveDateChange, rejectDateChange } from '../api
 import { LuCheck, LuX, LuRefreshCw, LuChevronLeft, LuChevronRight, LuCalendarDays } from 'react-icons/lu'
 
 const STATUS_BADGE = {
-  pending:     'badge-warning',
-  pending_otp: 'badge-muted',
-  approved:    'badge-success',
-  rejected:    'badge-danger',
-  completed:   'badge-info',
-  cancelled:   'badge-muted',
+  pending:         'badge-warning',
+  pending_otp:     'badge-muted',
+  pending_payment: 'badge-warning',
+  approved:        'badge-success',
+  rejected:        'badge-danger',
+  completed:       'badge-info',
+  cancelled:       'badge-muted',
 }
 const STATUS_LABEL = {
-  pending:     'Chờ duyệt',
-  pending_otp: 'Chờ OTP',
-  approved:    'Đã duyệt',
-  rejected:    'Từ chối',
-  completed:   'Hoàn thành',
-  cancelled:   'Đã huỷ',
+  pending:         'Chờ duyệt',
+  pending_otp:     'Chờ OTP',
+  pending_payment: 'Chờ thanh toán',
+  approved:        'Đã duyệt',
+  rejected:        'Từ chối',
+  completed:       'Hoàn thành',
+  cancelled:       'Đã huỷ',
 }
 
-const ALL_STATUSES = ['pending', 'pending_otp', 'approved', 'rejected', 'completed', 'cancelled']
+const ALL_STATUSES = ['pending', 'pending_otp', 'pending_payment', 'approved', 'rejected', 'completed', 'cancelled']
 
 const fmtCurrency = (n) => {
   if (n == null || n === '') return '—'
