@@ -299,7 +299,7 @@ export default function SchedulesPage() {
   const [showRunAllConfirm, setShowRunAllConfirm] = useState(false)
   const stopRunAllRef = useRef(false)
   const [autoMsg,      setAutoMsg]          = useState('')
-  const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', flights_per_route:'3', advance_days:'30', is_enabled: false })
+  const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', route_limit:'100', advance_days:'7', is_enabled: false })
 
   const loadFlights = () =>
     getFlights({ limit: 500 }).then(r => setFlights(r.data.data || [])).catch(() => {})
@@ -311,11 +311,11 @@ export default function SchedulesPage() {
         setAutoStatus(d)
         if (d.config) setAutoForm(p => ({
           ...p,
-          start_date:       d.config.start_date?.slice(0,10) || '',
-          end_date:         d.config.end_date?.slice(0,10)   || '',
-          flights_per_route: String(d.config.flights_per_route || 3),
-          advance_days:      String(d.config.advance_days     || 30),
-          is_enabled:        !!d.config.is_enabled,
+          start_date:  d.config.start_date?.slice(0,10) || '',
+          end_date:    d.config.end_date?.slice(0,10)   || '',
+          route_limit: String(d.config.route_limit  || 100),
+          advance_days: String(d.config.advance_days || 7),
+          is_enabled:  !!d.config.is_enabled,
         }))
       })
       .catch(() => {})
@@ -443,11 +443,11 @@ export default function SchedulesPage() {
     setAutoMsg('')
     try {
       const payload = {
-        is_enabled:        newEnabled !== undefined ? newEnabled : autoForm.is_enabled,
-        start_date:        autoForm.start_date  || null,
-        end_date:          autoForm.end_date    || null,
-        flights_per_route: Number(autoForm.flights_per_route) || 3,
-        advance_days:      Number(autoForm.advance_days)      || 30,
+        is_enabled:  newEnabled !== undefined ? newEnabled : autoForm.is_enabled,
+        start_date:  autoForm.start_date || null,
+        end_date:    autoForm.end_date   || null,
+        route_limit: Number(autoForm.route_limit)  || 100,
+        advance_days: Number(autoForm.advance_days) || 7,
       }
       await saveAutoFlightConfig(payload)
       setAutoForm(p => ({ ...p, is_enabled: payload.is_enabled }))
@@ -788,19 +788,25 @@ export default function SchedulesPage() {
                   </span>
                 </div>
                 <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:16, lineHeight:1.6 }}>
-                  Hệ thống tự động đọc tất cả hãng bay và tuyến đường từ dữ liệu thực tế,
-                  tính thời gian bay bằng tọa độ, áp giá theo tier hãng và khung giờ.
-                  Cron chạy mỗi <strong>5 phút</strong>, tạo tối đa 200 chuyến/lần — hoàn tất toàn bộ trong ~12 giờ.
+                  Hệ thống tự động đọc <strong>tất cả</strong> hãng bay và sân bay, tính thời gian bay bằng tọa độ, áp giá theo tier và khung giờ.
+                  Mỗi tuyến có <strong>48 chuyến/ngày</strong> (cứ 30 phút 1 chuyến, 00:00 → 23:30).
+                  Mỗi lần batch xử lý <em>N tuyến</em>, cron chạy định kỳ để dần phủ hết tất cả tuyến.
                 </p>
 
                 {/* Status chips */}
                 {autoStatus && (
                   <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
                     <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
-                      {autoStatus.total_routes} tuyến đã phát hiện
+                      {autoStatus.total_routes?.toLocaleString('vi-VN')} tuyến tổng
                     </span>
                     <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
-                      Đã tạo tổng: {autoStatus.config?.total_created || 0} chuyến
+                      Offset hiện tại: {autoStatus.current_offset || 0} / {autoStatus.total_routes || 0}
+                    </span>
+                    <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
+                      ~{autoStatus.batches_to_cover || '?'} lần chạy để phủ hết
+                    </span>
+                    <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
+                      Đã tạo tổng: {autoStatus.config?.total_created?.toLocaleString('vi-VN') || 0} chuyến
                     </span>
                     {autoStatus.config?.last_run_at && (
                       <span style={{ fontSize:11, padding:'3px 10px', borderRadius:6, background:'var(--bg-input)', color:'var(--text-muted)' }}>
@@ -825,23 +831,22 @@ export default function SchedulesPage() {
                       onChange={e => setAutoForm(p => ({ ...p, end_date: e.target.value }))}/>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Số chuyến/tuyến/ngày</label>
-                    <input className="form-control" type="number" min="1" max="12"
-                      value={autoForm.flights_per_route}
-                      onChange={e => setAutoForm(p => ({ ...p, flights_per_route: e.target.value }))}/>
+                    <label className="form-label">Số tuyến/lần chạy</label>
+                    <input className="form-control" type="number" min="10" max="500"
+                      value={autoForm.route_limit}
+                      onChange={e => setAutoForm(p => ({ ...p, route_limit: e.target.value }))}/>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
-                      Ví dụ: 5 → SGN→DAD 5 chuyến/ngày, SGN→HAN 5 chuyến/ngày riêng biệt
+                      Mỗi lần batch xử lý N tuyến → tăng offset. Cron chạy liên tục sẽ phủ hết tất cả tuyến.
+                      Gợi ý: 50–200 (nhỏ = ít tải, lớn = nhanh hơn).
                     </div>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Giới hạn tạo trước (ngày) <span style={{fontWeight:400,color:'var(--text-muted)'}}>— dùng khi không đặt "Đến ngày"</span></label>
-                    <input className="form-control" type="number" min="1" max="90"
+                    <label className="form-label">Tạo trước (ngày) <span style={{fontWeight:400,color:'var(--text-muted)'}}>— dùng khi không đặt "Đến ngày"</span></label>
+                    <input className="form-control" type="number" min="1" max="30"
                       value={autoForm.advance_days}
                       onChange={e => setAutoForm(p => ({ ...p, advance_days: e.target.value }))}/>
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
-                      Hệ thống lấy ngày <strong>nào gần hơn</strong> giữa "Đến ngày" và giới hạn này.<br/>
-                      • Nếu <strong>có "Đến ngày"</strong> gần (vd: 31/5) → giới hạn này bị bỏ qua, chạy đúng đến 31/5.<br/>
-                      • Nếu <strong>không đặt "Đến ngày"</strong> hoặc đặt rất xa → giới hạn này quyết định, cron chỉ tạo đến hôm nay + N ngày.
+                      Cron chỉ tạo chuyến bay trong vòng N ngày tới — giữ nhỏ (7–14) để tránh quá tải DB.
                     </div>
                   </div>
                 </div>
