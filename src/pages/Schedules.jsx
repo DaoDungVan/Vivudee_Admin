@@ -298,8 +298,10 @@ export default function SchedulesPage() {
   // ── Auto multi-airline mode ───────────────────────────────────────────────────
   const [scheduleMode, setScheduleMode]     = useState('single') // 'single' | 'auto' | 'airport'
   const [apForm, setApForm] = useState({ airport_code:'', start_date:'', end_date:'', flights_per_route:2, mode:'per_day' })
-  const [apRunning, setApRunning]   = useState(false)
-  const [apResult,  setApResult]    = useState(null)
+  const [apRunning, setApRunning]       = useState(false)
+  const [apResult,  setApResult]        = useState(null)
+  const [apProgress, setApProgress]     = useState(null) // { created, round }
+  const apStopRef = useRef(false)
   const [autoStatus,   setAutoStatus]       = useState(null)
   const [autoSaving,   setAutoSaving]       = useState(false)
   const [autoRunning,  setAutoRunning]      = useState(false)
@@ -1168,27 +1170,48 @@ export default function SchedulesPage() {
                   )
                 })()}
 
-                <button
-                  className="btn btn-primary" style={{ background:'#f59e0b', borderColor:'#f59e0b' }}
-                  disabled={apRunning || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
-                  onClick={async () => {
-                    setApRunning(true); setApResult(null)
-                    try {
-                      const r = await runFromAirport({
-                        airport_code:     apForm.airport_code,
-                        start_date:       apForm.start_date,
-                        end_date:         apForm.end_date,
-                        flights_per_route: apForm.flights_per_route,
-                        mode:             apForm.mode,
-                      })
-                      setApResult({ ok: true, ...r.data })
-                    } catch(e) {
-                      setApResult({ ok: false, error: e?.response?.data?.error || e.message })
-                    } finally { setApRunning(false) }
-                  }}
-                >
-                  {apRunning ? '⏳ Đang tạo...' : `✈️ Tạo chuyến bay từ ${apForm.airport_code || '---'}`}
-                </button>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                  <button
+                    className="btn btn-primary" style={{ background:'#f59e0b', borderColor:'#f59e0b' }}
+                    disabled={apRunning || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
+                    onClick={async () => {
+                      apStopRef.current = false
+                      setApRunning(true); setApResult(null); setApProgress({ created: 0, round: 0 })
+                      let totalCreated = 0, totalSkipped = 0, round = 0
+                      try {
+                        while (true) {
+                          if (apStopRef.current) break
+                          round++
+                          setApProgress({ created: totalCreated, round })
+                          const r = await runFromAirport({
+                            airport_code:      apForm.airport_code,
+                            start_date:        apForm.start_date,
+                            end_date:          apForm.end_date,
+                            flights_per_route: apForm.flights_per_route,
+                            mode:              apForm.mode,
+                          })
+                          totalCreated += r.data.created || 0
+                          totalSkipped += r.data.skipped || 0
+                          if (!r.data.limit_reached || (r.data.created || 0) === 0) break
+                        }
+                        setApResult({ ok: true, created: totalCreated, skipped: totalSkipped, stopped: apStopRef.current })
+                      } catch(e) {
+                        setApResult({ ok: false, error: e?.response?.data?.error || e.message, created: totalCreated })
+                      } finally { setApRunning(false); setApProgress(null) }
+                    }}
+                  >
+                    {apRunning ? `⏳ Đợt ${apProgress?.round || 1} — ${(apProgress?.created || 0).toLocaleString('vi-VN')} chuyến...` : `✈️ Tạo chuyến bay từ ${apForm.airport_code || '---'}`}
+                  </button>
+                  {apRunning && (
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => { apStopRef.current = true }}
+                      style={{ background:'rgba(220,38,38,0.08)', color:'#dc2626', border:'1px solid #dc2626', fontSize:13 }}
+                    >
+                      ⏹ Dừng lại
+                    </button>
+                  )}
+                </div>
 
                 {apResult && (
                   <div style={{ marginTop:12, padding:'10px 14px', borderRadius:8,
@@ -1196,8 +1219,8 @@ export default function SchedulesPage() {
                     border: `1px solid ${apResult.ok ? '#059669' : '#dc2626'}`,
                     color: apResult.ok ? '#059669' : '#dc2626', fontSize:13 }}>
                     {apResult.ok
-                      ? `✅ Tạo ${apResult.created?.toLocaleString('vi-VN')} chuyến, bỏ qua ${apResult.skipped?.toLocaleString('vi-VN')} (${apResult.destinations} tuyến, ${apResult.airlines} hãng)`
-                      : `❌ ${apResult.error}`}
+                      ? `✅ ${apResult.stopped ? '⏹ Đã dừng —' : 'Hoàn tất —'} Tạo ${apResult.created?.toLocaleString('vi-VN')} chuyến, bỏ qua ${apResult.skipped?.toLocaleString('vi-VN')}`
+                      : `❌ ${apResult.error}${apResult.created ? ` (đã tạo được ${apResult.created.toLocaleString('vi-VN')} chuyến)` : ''}`}
                   </div>
                 )}
               </div>
