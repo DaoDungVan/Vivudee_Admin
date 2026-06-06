@@ -112,6 +112,8 @@ export const saveAutoFlightConfig = (data) => api.put('/admin/auto-flights/confi
 export const runAutoFlightBatch  = (batch_size) => api.post('/admin/auto-flights/run', { batch_size })
 export const runAutoFlightAll    = ()            => api.post('/admin/auto-flights/run-all')
 export const runFromAirport     = (data)         => api.post('/admin/auto-flights/from-airport', data, { timeout: 300000 })
+export const runFromAirportBg   = (data)         => api.post('/admin/auto-flights/from-airport-bg', data)
+export const getBgJobStatus     = ()             => api.get('/admin/auto-flights/bg-status')
 
 // ─── Airports ──────────────────────────────────────────────────────────────
 export const getAirportCountries = () => api.get('/public/airport-countries')
