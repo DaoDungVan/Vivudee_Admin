@@ -4,8 +4,6 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { Link } from 'react-router-dom'
 import { LuPlane, LuSearch, LuPencil, LuEye, LuBan, LuX, LuTriangleAlert, LuZap, LuCalculator, LuRefreshCw, LuCalendarDays, LuArrowLeftRight } from 'react-icons/lu'
 
-const SEARCH_FETCH_LIMIT = 500
-
 const SORT_OPTIONS = [
   { value: 'created_desc', label: 'Mới tạo nhất' },
   { value: 'created_asc',  label: 'Cũ tạo nhất' },
@@ -152,36 +150,6 @@ const buildSeatFormList = (seats = []) => {
   return SEAT_CLASS_ORDER.map(cls => normalizeSeatForForm(map.get(cls) || createSeat(cls)))
 }
 
-// ─── Flight list helpers ───────────────────────────────────────────────────────
-
-const matchesFlightSearch = (f, q) =>
-  [f.flight_number, f.airline_name, f.airline_code, f.departure_code, f.arrival_code, f.dep_code, f.arr_code, f.from_city, f.to_city, f.departure_city, f.arrival_city]
-    .some(v => String(v || '').toLowerCase().includes(q))
-
-const getFlightDateValue = (v) => {
-  if (!v) return NaN
-  const t = new Date(String(v).replace(' ', 'T')).getTime()
-  return isNaN(t) ? NaN : t
-}
-
-const getFlightDateOnly = (v) => {
-  if (!v) return ''
-  const m = String(v).match(/(\d{4}-\d{2}-\d{2})/)
-  return m ? m[1] : ''
-}
-
-const sortFlights = (items, dir) => {
-  if (dir === 'created_desc') return [...items].sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
-  if (dir === 'created_asc')  return [...items].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
-  return [...items].sort((a, b) => {
-    const ta = getFlightDateValue(a?.departure_time)
-    const tb = getFlightDateValue(b?.departure_time)
-    if (isNaN(ta) && isNaN(tb)) return 0
-    if (isNaN(ta)) return 1
-    if (isNaN(tb)) return -1
-    return dir === 'desc' ? tb - ta : ta - tb
-  })
-}
 
 const STATUS_LABELS = {
   scheduled: { label: 'Đã lên lịch',    cls: 'badge-info' },
@@ -404,41 +372,29 @@ export default function FlightsPage() {
   const saveLockRef = useRef(false)
   const debouncedSearch = useDebouncedValue(search)
 
+  const SORT_PARAM_MAP = {
+    created_desc: 'created_desc',
+    created_asc:  'created_asc',
+    desc:         'dep_desc',
+    asc:          'dep_asc',
+  }
+
   const load = useCallback(() => {
     const requestId = ++requestIdRef.current
-    const keyword = debouncedSearch.trim()
-    const searching = keyword.length > 0
-    const filteringDate = Boolean(departureDateFilter)
-    const sorting = Boolean(sortDirection)
-    const useClient = searching || filteringDate || sorting
-
     setLoading(true)
     getFlights({
-      page: useClient ? 1 : page,
-      limit: useClient ? SEARCH_FETCH_LIMIT : limit,
+      page,
+      limit,
       status: filterStatus || undefined,
       show_hidden: showHidden ? true : undefined,
+      sort: SORT_PARAM_MAP[sortDirection] || undefined,
+      search: debouncedSearch.trim() || undefined,
+      departure_date: departureDateFilter || undefined,
     })
       .then(r => {
         if (requestId !== requestIdRef.current) return
         const d = r.data
-        let items = d.data || []
-
-        if (useClient) {
-          if (searching) items = items.filter(f => matchesFlightSearch(f, keyword.toLowerCase()))
-          if (filteringDate) items = items.filter(f => getFlightDateOnly(f.departure_time) === departureDateFilter)
-          if (sorting) items = sortFlights(items, sortDirection)
-
-          const total = items.length
-          const totalPages = Math.max(1, Math.ceil(total / limit))
-          const safePage = Math.min(page, totalPages)
-          setFlights(items.slice((safePage - 1) * limit, safePage * limit))
-          setPagination({ total, total_pages: totalPages, page: safePage })
-          if (safePage !== page) setPage(safePage)
-          return
-        }
-
-        setFlights(items)
+        setFlights(d.data || [])
         setPagination(d.pagination || { total: 0, total_pages: 1, page: 1 })
       })
       .catch(() => { if (requestId !== requestIdRef.current) return })

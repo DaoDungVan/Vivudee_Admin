@@ -308,7 +308,8 @@ export default function SchedulesPage() {
   const stopRunAllRef = useRef(false)
   const [autoMsg,      setAutoMsg]          = useState('')
   const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', route_limit:'100', advance_days:'7', is_enabled: false })
-  const [pendingResume, setPendingResume]       = useState(null) // { round, created, startedAt }
+  const [pendingResume, setPendingResume]           = useState(null) // { round, created, startedAt } — job interrupted in THIS tab
+  const [liveJobFromOtherTab, setLiveJobFromOtherTab] = useState(null) // job running in another tab
   const [interruptedSingle, setInterruptedSingle] = useState(false)
 
   const loadFlights = () =>
@@ -336,18 +337,31 @@ export default function SchedulesPage() {
     loadFlights()
     loadAutoStatus()
 
-    // Phục hồi trạng thái "đang tạo" sau khi reload
+    // Phục hồi trạng thái sau khi reload
     try {
-      const savedRunAll = localStorage.getItem('vivudee_autoRunningAll')
-      if (savedRunAll) {
-        const { active, startedAt, round, created } = JSON.parse(savedRunAll)
+      // _bak được set bởi beforeunload trong handleRunAll — chứng tỏ TAB NÀY bị reload khi đang chạy
+      const bakKey = localStorage.getItem('vivudee_autoRunningAll_bak')
+      if (bakKey) {
+        localStorage.removeItem('vivudee_autoRunningAll_bak')
+        const { active, startedAt, round, created } = JSON.parse(bakKey)
         if (active && (Date.now() - startedAt) < 60 * 60 * 1000) {
           setScheduleMode('auto')
           setPendingResume({ round: round || 0, created: created || 0, startedAt })
-        } else {
-          localStorage.removeItem('vivudee_autoRunningAll')
+        }
+      } else {
+        // Nếu không có backup, kiểm tra key chính — có thể tab khác đang chạy
+        const mainKey = localStorage.getItem('vivudee_autoRunningAll')
+        if (mainKey) {
+          const { active, startedAt, round, created } = JSON.parse(mainKey)
+          if (active && (Date.now() - startedAt) < 60 * 60 * 1000) {
+            setScheduleMode('auto')
+            setLiveJobFromOtherTab({ round: round || 0, created: created || 0, startedAt })
+          } else {
+            localStorage.removeItem('vivudee_autoRunningAll')
+          }
         }
       }
+
       const savedCreating = localStorage.getItem('vivudee_creating')
       if (savedCreating) {
         const { active, startedAt } = JSON.parse(savedCreating)
@@ -359,8 +373,30 @@ export default function SchedulesPage() {
       }
     } catch {
       localStorage.removeItem('vivudee_autoRunningAll')
+      localStorage.removeItem('vivudee_autoRunningAll_bak')
       localStorage.removeItem('vivudee_creating')
     }
+
+    // Lắng nghe thay đổi localStorage từ tab khác (storage event chỉ fire ở OTHER tabs)
+    const onStorage = (e) => {
+      if (e.key === 'vivudee_autoRunningAll') {
+        if (e.newValue) {
+          try {
+            const { active, round, created, startedAt } = JSON.parse(e.newValue)
+            if (active) {
+              setLiveJobFromOtherTab({ round: round || 0, created: created || 0, startedAt })
+              setScheduleMode('auto')
+            } else {
+              setLiveJobFromOtherTab(null)
+            }
+          } catch {}
+        } else {
+          setLiveJobFromOtherTab(null)
+        }
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   // ── Form helpers ─────────────────────────────────────────────────────────────
@@ -519,11 +555,23 @@ export default function SchedulesPage() {
     setShowRunAllConfirm(false)
     stopRunAllRef.current = false
     setAutoRunningAll(true)
+    setLiveJobFromOtherTab(null)
     let totalCreated = 0
     let totalSkipped = 0
     let round = 0
-    // Lưu trạng thái vào localStorage để phục hồi khi reload
-    localStorage.setItem('vivudee_autoRunningAll', JSON.stringify({ active: true, startedAt: Date.now(), round: 0, created: 0 }))
+    const startedAt = Date.now()
+    const saveState = (r, c) =>
+      localStorage.setItem('vivudee_autoRunningAll', JSON.stringify({ active: true, startedAt, round: r, created: c }))
+    saveState(0, 0)
+
+    // beforeunload: lưu backup trước khi page unload để phục hồi sau reload
+    // (finally chạy khi fetch bị abort nên xóa key chính; backup đảm bảo key còn lại)
+    const onBeforeUnload = () => {
+      const cur = localStorage.getItem('vivudee_autoRunningAll')
+      if (cur) localStorage.setItem('vivudee_autoRunningAll_bak', cur)
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+
     try {
       while (true) {
         if (stopRunAllRef.current) {
@@ -532,8 +580,7 @@ export default function SchedulesPage() {
         }
         round++
         setAutoMsg(`⏳ Đợt ${round}: đang tạo... (${totalCreated} chuyến đã tạo)`)
-        localStorage.setItem('vivudee_autoRunningAll', JSON.stringify({ active: true, startedAt: JSON.parse(localStorage.getItem('vivudee_autoRunningAll') || '{}').startedAt || Date.now(), round, created: totalCreated }))
-        // Dùng /run-all (unlimited) — xử lý toàn bộ route_limit tuyến không giới hạn số chuyến
+        saveState(round, totalCreated)
         const r = await runAutoFlightAll()
         totalCreated += r.data.created || 0
         totalSkipped += r.data.skipped || 0
@@ -547,6 +594,7 @@ export default function SchedulesPage() {
     } catch (e) {
       setAutoMsg(`Lỗi sau ${totalCreated} chuyến: ` + (e.response?.data?.error || e.message))
     } finally {
+      window.removeEventListener('beforeunload', onBeforeUnload)
       setAutoRunningAll(false)
       stopRunAllRef.current = false
       localStorage.removeItem('vivudee_autoRunningAll')
@@ -994,13 +1042,23 @@ export default function SchedulesPage() {
                   </div>
                 )}
 
-                {/* Banner phục hồi sau reload */}
-                {pendingResume && !autoRunningAll && (
+                {/* Banner: job đang chạy ở tab khác — real-time qua storage event */}
+                {liveJobFromOtherTab && !autoRunningAll && (
+                  <div style={{ marginTop:10, fontSize:12, padding:'10px 12px', borderRadius:6,
+                    background:'rgba(14,129,205,0.08)', border:'1px solid var(--accent)', color:'var(--accent)',
+                    display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
+                  }}>
+                    <span>🔄 Job đang chạy ở tab khác — Đợt {liveJobFromOtherTab.round}, đã tạo <strong>{liveJobFromOtherTab.created.toLocaleString('vi-VN')}</strong> chuyến (cập nhật real-time)</span>
+                  </div>
+                )}
+
+                {/* Banner phục hồi sau reload — tab này đang chạy bị reload */}
+                {pendingResume && !autoRunningAll && !liveJobFromOtherTab && (
                   <div style={{ marginTop:10, fontSize:12, padding:'10px 12px', borderRadius:6,
                     background:'rgba(245,158,11,0.1)', border:'1px solid #f59e0b', color:'#b45309',
                     display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
                   }}>
-                    <span>⚠ Phát hiện job đang chạy trước khi reload — đợt {pendingResume.round}, đã tạo {pendingResume.created.toLocaleString('vi-VN')} chuyến. Job đã bị dừng do reload.</span>
+                    <span>⚠ Tab này bị reload khi đang chạy — Đợt {pendingResume.round}, đã tạo {pendingResume.created.toLocaleString('vi-VN')} chuyến. Job đã dừng.</span>
                     <div style={{ display:'flex', gap:6, marginLeft:'auto' }}>
                       <button className="btn btn-sm"
                         style={{ background:'#f59e0b', color:'#fff', border:'none', fontSize:11 }}
@@ -1008,7 +1066,7 @@ export default function SchedulesPage() {
                         Tiếp tục từ offset hiện tại
                       </button>
                       <button className="btn btn-secondary btn-sm" style={{ fontSize:11 }}
-                        onClick={() => setPendingResume(null)}>
+                        onClick={() => { setPendingResume(null); localStorage.removeItem('vivudee_autoRunningAll_bak') }}>
                         Bỏ qua
                       </button>
                     </div>
