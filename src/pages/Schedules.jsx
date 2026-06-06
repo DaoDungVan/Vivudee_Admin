@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll, runFromAirport, runFromAirportBg, getBgJobStatus } from '../api'
+import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll, runFromAirport, runFromAirportBg, getBgJobStatus, setAirportJob, getAirportJobStatus } from '../api'
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
@@ -302,8 +302,10 @@ export default function SchedulesPage() {
   const [apResult,  setApResult]        = useState(null)
   const [apProgress, setApProgress]     = useState(null) // { created, round }
   const apStopRef = useRef(false)
-  const [bgStatus,  setBgStatus]        = useState(null) // server-side bg job status
+  const [bgStatus,  setBgStatus]        = useState(null) // server-side bg job status (memory)
+  const [apDbJob,   setApDbJob]         = useState(null) // DB-persisted job status
   const bgPollRef = useRef(null)
+  const dbPollRef = useRef(null)
   const [autoStatus,   setAutoStatus]       = useState(null)
   const [autoSaving,   setAutoSaving]       = useState(false)
   const [autoRunning,  setAutoRunning]      = useState(false)
@@ -335,27 +337,31 @@ export default function SchedulesPage() {
       })
       .catch(() => {})
 
-  // Poll trạng thái bg job mỗi 5 giây
   const startBgPoll = () => {
     if (bgPollRef.current) return
     bgPollRef.current = setInterval(async () => {
       try {
         const r = await getBgJobStatus()
         setBgStatus(r.data)
-        if (!r.data.running) {
-          clearInterval(bgPollRef.current)
-          bgPollRef.current = null
-        }
+        if (!r.data.running) { clearInterval(bgPollRef.current); bgPollRef.current = null }
       } catch {}
     }, 5000)
   }
 
+  const startDbPoll = () => {
+    if (dbPollRef.current) return
+    dbPollRef.current = setInterval(async () => {
+      try {
+        const r = await getAirportJobStatus()
+        setApDbJob(r.data)
+        if (!r.data?.ap_running) { clearInterval(dbPollRef.current); dbPollRef.current = null }
+      } catch {}
+    }, 10000)
+  }
+
   useEffect(() => {
-    // Kiểm tra ngay khi load xem server có đang chạy job không
-    getBgJobStatus().then(r => {
-      setBgStatus(r.data)
-      if (r.data.running) startBgPoll()
-    }).catch(() => {})
+    getBgJobStatus().then(r => { setBgStatus(r.data); if (r.data.running) startBgPoll() }).catch(() => {})
+    getAirportJobStatus().then(r => { setApDbJob(r.data); if (r.data?.ap_running) startDbPoll() }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -1195,16 +1201,16 @@ export default function SchedulesPage() {
                   )
                 })()}
 
-                {/* Trạng thái bg job server-side */}
-                {bgStatus?.running && (
-                  <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(14,129,205,0.08)', border:'1px solid var(--accent)', fontSize:13, color:'var(--accent)' }}>
-                    ⚡ Server đang chạy ngầm — Đợt {bgStatus.round} · {bgStatus.created?.toLocaleString('vi-VN')} chuyến đã tạo
-                    <span style={{ marginLeft:8, fontSize:11, color:'var(--text-muted)' }}>Có thể đóng tab, tự cập nhật mỗi 5s</span>
+                {/* Trạng thái DB job (cron 5 phút) */}
+                {apDbJob?.ap_running && (
+                  <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(5,150,105,0.08)', border:'1px solid #059669', fontSize:13, color:'#059669' }}>
+                    ✅ Đang chạy ngầm qua cron — Đợt {apDbJob.ap_round} · {Number(apDbJob.ap_created).toLocaleString('vi-VN')} chuyến
+                    <span style={{ marginLeft:8, fontSize:11, color:'var(--text-muted)' }}>Đóng tab được, cron tự chạy mỗi 5 phút</span>
                   </div>
                 )}
-                {bgStatus && !bgStatus.running && bgStatus.round > 0 && (
-                  <div style={{ marginBottom:12, padding:'8px 14px', borderRadius:8, background: bgStatus.error ? 'rgba(220,38,38,0.08)' : 'rgba(5,150,105,0.08)', border:`1px solid ${bgStatus.error ? '#dc2626' : '#059669'}`, fontSize:13, color: bgStatus.error ? '#dc2626' : '#059669' }}>
-                    {bgStatus.error ? `❌ Job lỗi: ${bgStatus.error}` : `✅ Job hoàn tất — ${bgStatus.created?.toLocaleString('vi-VN')} chuyến sau ${bgStatus.round} đợt`}
+                {apDbJob && !apDbJob.ap_running && apDbJob.ap_round > 0 && (
+                  <div style={{ marginBottom:12, padding:'8px 14px', borderRadius:8, background:'rgba(5,150,105,0.08)', border:'1px solid #059669', fontSize:13, color:'#059669' }}>
+                    ✅ Hoàn tất — {Number(apDbJob.ap_created).toLocaleString('vi-VN')} chuyến sau {apDbJob.ap_round} đợt
                   </div>
                 )}
 
@@ -1249,29 +1255,29 @@ export default function SchedulesPage() {
                       ⏹ Dừng lại
                     </button>
                   )}
-                  {/* Nút chạy ngầm — server tự xử lý, đóng tab vẫn chạy */}
+                  {/* Nút chạy ngầm qua DB+cron — đóng tab, tắt máy vẫn chạy */}
                   {!apRunning && (
                     <button
                       className="btn btn-sm"
-                      disabled={bgStatus?.running || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
-                      style={{ background:'rgba(14,129,205,0.08)', color:'var(--accent)', border:'1px solid var(--accent)', fontSize:13, display:'flex', alignItems:'center', gap:5 }}
+                      disabled={apDbJob?.ap_running || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
+                      style={{ background:'rgba(5,150,105,0.08)', color:'#059669', border:'1px solid #059669', fontSize:13, display:'flex', alignItems:'center', gap:5 }}
                       onClick={async () => {
                         try {
-                          await runFromAirportBg({
+                          await setAirportJob({
                             airport_code:      apForm.airport_code,
                             start_date:        apForm.start_date,
                             end_date:          apForm.end_date,
                             flights_per_route: apForm.flights_per_route,
                             mode:              apForm.mode,
                           })
-                          setBgStatus({ running: true, created: 0, round: 0 })
-                          startBgPoll()
+                          setApDbJob({ ap_running: true, ap_created: 0, ap_round: 0 })
+                          startDbPoll()
                         } catch(e) {
                           alert('Lỗi: ' + (e?.response?.data?.error || e.message))
                         }
                       }}
                     >
-                      ⚡ Chạy ngầm (đóng tab được)
+                      🌙 Chạy ngầm qua cron
                     </button>
                   )}
                 </div>
