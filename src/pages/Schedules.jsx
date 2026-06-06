@@ -84,16 +84,24 @@ const getRouteWarning = (airlineCode, depCode, arrCode) => {
 
 const ACTIVE_FLIGHT_STATUSES = new Set(['scheduled', 'delayed', 'boarding', 'departed', 'arrived'])
 
-// Tất cả 24 khung giờ trong ngày
-const ALL_DAY_TIMES = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`)
+// 48 slot mỗi 30 phút: 00:00, 00:30, 01:00, ..., 23:30
+const ALL_DAY_TIMES = Array.from({ length: 48 }, (_, i) => {
+  const h = Math.floor(i / 2)
+  const m = (i % 2) * 30
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+})
 
-// Chọn N khung giờ phân bổ đều trong ngày (0 hoặc >= 24 → trả về tất cả 24)
+// Chọn N slot phân bổ đều trong 48 slot (0 hoặc >= 48 → trả về tất cả 48)
 const getTimeSlotsForDay = (flightsPerDay) => {
   const n = Number(flightsPerDay)
-  if (!n || n <= 0 || n >= 24) return ALL_DAY_TIMES
+  if (!n || n <= 0 || n >= 48) return ALL_DAY_TIMES
   const slots = new Set()
-  for (let i = 0; i < n; i++) slots.add(Math.floor(i * 24 / n))
-  return [...slots].sort((a, b) => a - b).map(h => `${String(h).padStart(2, '0')}:00`)
+  for (let i = 0; i < n; i++) slots.add(Math.floor(i * 48 / n))
+  return [...slots].sort((a, b) => a - b).map(i => {
+    const h = Math.floor(i / 2)
+    const m = (i % 2) * 30
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+  })
 }
 
 // Tạo pool số hiệu khả dụng cho một hãng — dùng trong tạo lịch hàng loạt
@@ -300,6 +308,8 @@ export default function SchedulesPage() {
   const stopRunAllRef = useRef(false)
   const [autoMsg,      setAutoMsg]          = useState('')
   const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', route_limit:'100', advance_days:'7', is_enabled: false })
+  const [pendingResume, setPendingResume]       = useState(null) // { round, created, startedAt }
+  const [interruptedSingle, setInterruptedSingle] = useState(false)
 
   const loadFlights = () =>
     getFlights({ limit: 500 }).then(r => setFlights(r.data.data || [])).catch(() => {})
@@ -325,6 +335,32 @@ export default function SchedulesPage() {
     getAirlines({ limit: 100 }).then(r => setAirlines(r.data.data || [])).catch(() => {})
     loadFlights()
     loadAutoStatus()
+
+    // Phục hồi trạng thái "đang tạo" sau khi reload
+    try {
+      const savedRunAll = localStorage.getItem('vivudee_autoRunningAll')
+      if (savedRunAll) {
+        const { active, startedAt, round, created } = JSON.parse(savedRunAll)
+        if (active && (Date.now() - startedAt) < 60 * 60 * 1000) {
+          setScheduleMode('auto')
+          setPendingResume({ round: round || 0, created: created || 0, startedAt })
+        } else {
+          localStorage.removeItem('vivudee_autoRunningAll')
+        }
+      }
+      const savedCreating = localStorage.getItem('vivudee_creating')
+      if (savedCreating) {
+        const { active, startedAt } = JSON.parse(savedCreating)
+        if (active && (Date.now() - startedAt) < 60 * 60 * 1000) {
+          setScheduleMode('single')
+          setInterruptedSingle(true)
+        }
+        localStorage.removeItem('vivudee_creating')
+      }
+    } catch {
+      localStorage.removeItem('vivudee_autoRunningAll')
+      localStorage.removeItem('vivudee_creating')
+    }
   }, [])
 
   // ── Form helpers ─────────────────────────────────────────────────────────────
@@ -486,6 +522,8 @@ export default function SchedulesPage() {
     let totalCreated = 0
     let totalSkipped = 0
     let round = 0
+    // Lưu trạng thái vào localStorage để phục hồi khi reload
+    localStorage.setItem('vivudee_autoRunningAll', JSON.stringify({ active: true, startedAt: Date.now(), round: 0, created: 0 }))
     try {
       while (true) {
         if (stopRunAllRef.current) {
@@ -494,7 +532,9 @@ export default function SchedulesPage() {
         }
         round++
         setAutoMsg(`⏳ Đợt ${round}: đang tạo... (${totalCreated} chuyến đã tạo)`)
-        const r = await runAutoFlightBatch(200)
+        localStorage.setItem('vivudee_autoRunningAll', JSON.stringify({ active: true, startedAt: JSON.parse(localStorage.getItem('vivudee_autoRunningAll') || '{}').startedAt || Date.now(), round, created: totalCreated }))
+        // Dùng /run-all (unlimited) — xử lý toàn bộ route_limit tuyến không giới hạn số chuyến
+        const r = await runAutoFlightAll()
         totalCreated += r.data.created || 0
         totalSkipped += r.data.skipped || 0
         if ((r.data.created || 0) === 0) {
@@ -509,6 +549,7 @@ export default function SchedulesPage() {
     } finally {
       setAutoRunningAll(false)
       stopRunAllRef.current = false
+      localStorage.removeItem('vivudee_autoRunningAll')
     }
   }
 
@@ -532,8 +573,9 @@ export default function SchedulesPage() {
   const timeSlotsPerDay = getTimeSlotsForDay(form.flights_per_day)
 
   const totalToCreate   = effectiveDates.length * timeSlotsPerDay.length
-  const numPoolPreview  = selectedAirlineCode ? genFlightNumPool(selectedAirlineCode, flights, totalToCreate) : []
-  const poolShortfall   = totalToCreate > 0 && numPoolPreview.length < totalToCreate
+  // Per-date numbering: số hiệu tái sử dụng mỗi ngày (100–999/ngày), không cần pool toàn cục
+  const maxPerDay       = 900 // 100–999
+  const poolShortfall   = timeSlotsPerDay.length > maxPerDay
 
   const scheduleGroups  = groupBySchedule(flights)
   const filteredGroups  = groupSearch.trim()
@@ -575,17 +617,12 @@ export default function SchedulesPage() {
       }
     }
 
-    const totalFlights = effectiveDates.length * timeSlotsPerDay.length
-    const numPool = genFlightNumPool(selectedAirlineCode, flights, totalFlights)
-    if (numPool.length < totalFlights) {
-      return setError(`Không đủ số hiệu bay khả dụng cho ${selectedAirlineCode} (cần ${totalFlights}, còn lại ${numPool.length} số chưa dùng). Hãy chờ các chuyến hiện tại kết thúc hoặc giảm khoảng ngày.`)
-    }
-
     setError('')
     setCreating(true)
+    const totalFlights = effectiveDates.length * timeSlotsPerDay.length
     setProgress({ done: 0, total: totalFlights, failed: 0 })
+    localStorage.setItem('vivudee_creating', JSON.stringify({ active: true, startedAt: Date.now() }))
 
-    // seatPayload cơ sở — base_price sẽ được nhân hệ số giờ bên trong vòng lặp
     const baseSeatPayload = form.seats.map(s => ({
       class: s.class, total_seats: s.total_seats,
       rawPrice: s.base_price ? Number(s.base_price) : null,
@@ -593,20 +630,40 @@ export default function SchedulesPage() {
       extra_baggage_price: Number(s.extra_baggage_price) || 0,
     }))
 
-    let done = 0, failed = 0, numIdx = 0
+    let done = 0, failed = 0, firstNum = null, lastNum = null
+    const code = selectedAirlineCode
+
     for (const dateStr of effectiveDates) {
+      // Flight numbers per-date: tái sử dụng 100-999 mỗi ngày, chỉ tránh số đã dùng ngày đó
+      const usedOnDate = new Set(
+        flights
+          .filter(f => {
+            const fd = getFlightDateOnly(f.departure_time)
+            return fd === dateStr && ACTIVE_FLIGHT_STATUSES.has(f.status) &&
+                   String(f.flight_number || '').startsWith(code)
+          })
+          .map(f => parseInt(String(f.flight_number || '').slice(code.length), 10))
+          .filter(n => !isNaN(n))
+      )
+      let numCursor = 100
+
       for (const timeStr of timeSlotsPerDay) {
+        while (usedOnDate.has(numCursor) && numCursor <= 999) numCursor++
+        if (numCursor > 999) { failed++; setProgress({ done: done + failed, total: totalFlights, failed }); continue }
+        const flightNum = `${code}${numCursor}`
+        usedOnDate.add(numCursor)
+        numCursor++
+        if (!firstNum) firstNum = flightNum
+        lastNum = flightNum
+
         const depTime = `${dateStr}T${timeStr}`
         const depHour = parseInt(timeStr.slice(0, 2))
         const { mult: timeMult } = getTimeMult(depHour)
-
-        // Áp hệ số giờ vào giá từng hạng ghế
         const seatPayload = baseSeatPayload.map(({ rawPrice, ...s }) => ({
           ...s,
           base_price: rawPrice ? Math.round(rawPrice * timeMult / 1000) * 1000 : null,
         }))
 
-        const flightNum = numPool[numIdx++]
         try {
           await createFlight({
             flight_number: flightNum,
@@ -624,8 +681,9 @@ export default function SchedulesPage() {
       }
     }
 
+    localStorage.removeItem('vivudee_creating')
     setCreating(false)
-    setResult({ done, failed, total: totalFlights, start: form.start_date, end: form.end_date, firstNum: numPool[0], lastNum: numPool[numIdx - 1] })
+    setResult({ done, failed, total: totalFlights, start: form.start_date, end: form.end_date, firstNum, lastNum })
   }
 
   // ── Progress screen ──────────────────────────────────────────────────────────
@@ -720,6 +778,19 @@ export default function SchedulesPage() {
         {error && (
           <div className="alert alert-error" style={{ display:'flex', alignItems:'center', gap:6, marginBottom:16 }}>
             <LuTriangleAlert size={15}/> {error}
+          </div>
+        )}
+
+        {/* Cảnh báo batch tạo chuyến bị gián đoạn do reload */}
+        {interruptedSingle && (
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 14px', marginBottom:16,
+            background:'rgba(245,158,11,0.08)', border:'1px solid #f59e0b', borderRadius:8, fontSize:13, color:'#b45309' }}>
+            <LuTriangleAlert size={14} style={{ flexShrink:0 }}/>
+            <span>Batch tạo chuyến đơn lẻ trước có thể bị gián đoạn do reload — kiểm tra kết quả trong <strong>Quản lý chuyến bay</strong>.</span>
+            <button className="btn btn-secondary btn-sm" style={{ marginLeft:'auto', fontSize:11 }}
+              onClick={() => setInterruptedSingle(false)}>
+              Ẩn
+            </button>
           </div>
         )}
 
@@ -922,6 +993,27 @@ export default function SchedulesPage() {
                     {autoMsg}
                   </div>
                 )}
+
+                {/* Banner phục hồi sau reload */}
+                {pendingResume && !autoRunningAll && (
+                  <div style={{ marginTop:10, fontSize:12, padding:'10px 12px', borderRadius:6,
+                    background:'rgba(245,158,11,0.1)', border:'1px solid #f59e0b', color:'#b45309',
+                    display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+                  }}>
+                    <span>⚠ Phát hiện job đang chạy trước khi reload — đợt {pendingResume.round}, đã tạo {pendingResume.created.toLocaleString('vi-VN')} chuyến. Job đã bị dừng do reload.</span>
+                    <div style={{ display:'flex', gap:6, marginLeft:'auto' }}>
+                      <button className="btn btn-sm"
+                        style={{ background:'#f59e0b', color:'#fff', border:'none', fontSize:11 }}
+                        onClick={() => { setPendingResume(null); handleRunAll() }}>
+                        Tiếp tục từ offset hiện tại
+                      </button>
+                      <button className="btn btn-secondary btn-sm" style={{ fontSize:11 }}
+                        onClick={() => setPendingResume(null)}>
+                        Bỏ qua
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1070,7 +1162,7 @@ export default function SchedulesPage() {
               }}>
                 <span style={{ color:'var(--accent)', fontWeight:700, fontSize:16, lineHeight:1, flexShrink:0 }}>ℹ</span>
                 <div style={{ color:'var(--accent)', lineHeight:1.6 }}>
-                  Hệ thống sẽ <strong>tự động tạo 24 chuyến/ngày</strong> (00:00, 01:00, ... 23:00) cho mỗi ngày phù hợp trong khoảng đã chọn. Giá vé sẽ dao động theo khung giờ (cao điểm, thấp điểm).
+                  Hệ thống sẽ <strong>tự động tạo 48 chuyến/ngày</strong> (00:00, 00:30, ... 23:30 — mỗi 30 phút) cho mỗi ngày phù hợp trong khoảng đã chọn. Giá vé sẽ dao động theo khung giờ (cao điểm, thấp điểm).
                 </div>
               </div>
 
@@ -1206,10 +1298,10 @@ export default function SchedulesPage() {
                 <div className="form-group">
                   <label className="form-label">
                     Số chuyến/ngày
-                    <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>— để trống = tạo đủ 24 chuyến/ngày</span>
+                    <span style={{ fontWeight:400, fontSize:11, color:'var(--text-muted)', marginLeft:6 }}>— để trống = tạo đủ 48 chuyến/ngày (cứ 30 phút)</span>
                   </label>
                   <input
-                    className="form-control" type="number" min="1" max="24"
+                    className="form-control" type="number" min="1" max="48"
                     value={form.flights_per_day}
                     onChange={e => sf('flights_per_day', e.target.value)}
                     placeholder="24"
@@ -1217,7 +1309,7 @@ export default function SchedulesPage() {
                   {/* ★ Ghi chú nổi bật */}
                   <div style={{ fontSize:11, marginTop:4, color:'var(--accent)', fontWeight:500 }}>
                     Mỗi ngày trong khoảng đã chọn sẽ tạo đúng số chuyến này.
-                    Các giờ được phân bổ đều trong ngày (0 – 23h).
+                    Các slot được phân bổ đều trong 48 khung (00:00–23:30, cứ 30 phút).
                     Tổng = số ngày × số chuyến/ngày.
                   </div>
                 </div>
@@ -1286,7 +1378,7 @@ export default function SchedulesPage() {
                             )}
                             {poolShortfall && (
                               <div style={{ fontSize:12, color:'var(--danger)' }}>
-                                ⚠ Chỉ còn {numPoolPreview.length} số hiệu khả dụng — cần {totalToCreate}
+                                ⚠ Quá 900 slot/ngày — vượt giới hạn số hiệu (100–999)
                               </div>
                             )}
                           </div>
