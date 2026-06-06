@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll } from '../api'
+import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll, runFromAirport } from '../api'
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
@@ -1174,13 +1174,13 @@ export default function SchedulesPage() {
                   onClick={async () => {
                     setApRunning(true); setApResult(null)
                     try {
-                      const { default: axios } = await import('axios')
-                      const token = localStorage.getItem('token')
-                      const r = await axios.post(
-                        'https://backend-log-function-2.onrender.com/api/admin/auto-flights/from-airport',
-                        { airport_code: apForm.airport_code, start_date: apForm.start_date, end_date: apForm.end_date, flights_per_route: apForm.flights_per_route, mode: apForm.mode },
-                        { headers: { Authorization: `Bearer ${token}` } }
-                      )
+                      const r = await runFromAirport({
+                        airport_code:     apForm.airport_code,
+                        start_date:       apForm.start_date,
+                        end_date:         apForm.end_date,
+                        flights_per_route: apForm.flights_per_route,
+                        mode:             apForm.mode,
+                      })
                       setApResult({ ok: true, ...r.data })
                     } catch(e) {
                       setApResult({ ok: false, error: e?.response?.data?.error || e.message })
