@@ -309,7 +309,7 @@ export default function SchedulesPage() {
   const [showRunAllConfirm, setShowRunAllConfirm] = useState(false)
   const stopRunAllRef = useRef(false)
   const [autoMsg,      setAutoMsg]          = useState('')
-  const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', route_limit:'100', advance_days:'7', is_enabled: false })
+  const [autoForm, setAutoForm]             = useState({ start_date:'', end_date:'', route_limit:'100', is_enabled: false })
   const [pendingResume, setPendingResume]           = useState(null) // { round, created, startedAt } — job interrupted in THIS tab
   const [liveJobFromOtherTab, setLiveJobFromOtherTab] = useState(null) // job running in another tab
   const [interruptedSingle, setInterruptedSingle] = useState(false)
@@ -327,7 +327,6 @@ export default function SchedulesPage() {
           start_date:  d.config.start_date?.slice(0,10) || '',
           end_date:    d.config.end_date?.slice(0,10)   || '',
           route_limit: String(d.config.route_limit  || 100),
-          advance_days: String(d.config.advance_days || 7),
           is_enabled:  !!d.config.is_enabled,
         }))
       })
@@ -521,7 +520,6 @@ export default function SchedulesPage() {
         start_date:  autoForm.start_date || null,
         end_date:    autoForm.end_date   || null,
         route_limit: Number(autoForm.route_limit)  || 100,
-        advance_days: Number(autoForm.advance_days) || 7,
       }
       await saveAutoFlightConfig(payload)
       setAutoForm(p => ({ ...p, is_enabled: payload.is_enabled }))
@@ -959,15 +957,6 @@ export default function SchedulesPage() {
                     <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
                       Mỗi lần batch xử lý N tuyến → tăng offset. Cron chạy liên tục sẽ phủ hết tất cả tuyến.
                       Gợi ý: 50–200 (nhỏ = ít tải, lớn = nhanh hơn).
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Tạo trước (ngày) <span style={{fontWeight:400,color:'var(--text-muted)'}}>— dùng khi không đặt "Đến ngày"</span></label>
-                    <input className="form-control" type="number" min="1" max="30"
-                      value={autoForm.advance_days}
-                      onChange={e => setAutoForm(p => ({ ...p, advance_days: e.target.value }))}/>
-                    <div style={{ fontSize:11, color:'var(--text-muted)', marginTop:3 }}>
-                      Cron chỉ tạo chuyến bay trong vòng N ngày tới — giữ nhỏ (7–14) để tránh quá tải DB.
                     </div>
                   </div>
                 </div>
