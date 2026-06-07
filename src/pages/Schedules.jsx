@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll, runFromAirport, runFromAirportBg, getBgJobStatus, setAirportJob, getAirportJobStatus } from '../api'
+import { createFlight, updateFlightStatus, toggleFlightVisibility, getAirports, getAirlines, getFlights, getAutoFlightStatus, saveAutoFlightConfig, runAutoFlightBatch, runAutoFlightAll, runFromAirport } from '../api'
 import {
   LuCalendarDays, LuRefreshCw, LuTriangleAlert, LuPlane, LuArrowRight, LuRotateCcw,
   LuArrowLeftRight, LuPause, LuPlay, LuBan, LuX, LuSearch, LuCopy,
@@ -302,10 +302,6 @@ export default function SchedulesPage() {
   const [apResult,  setApResult]        = useState(null)
   const [apProgress, setApProgress]     = useState(null) // { created, round }
   const apStopRef = useRef(false)
-  const [bgStatus,  setBgStatus]        = useState(null) // server-side bg job status (memory)
-  const [apDbJob,   setApDbJob]         = useState(null) // DB-persisted job status
-  const bgPollRef = useRef(null)
-  const dbPollRef = useRef(null)
   const [autoStatus,   setAutoStatus]       = useState(null)
   const [autoSaving,   setAutoSaving]       = useState(false)
   const [autoRunning,  setAutoRunning]      = useState(false)
@@ -336,33 +332,6 @@ export default function SchedulesPage() {
         }))
       })
       .catch(() => {})
-
-  const startBgPoll = () => {
-    if (bgPollRef.current) return
-    bgPollRef.current = setInterval(async () => {
-      try {
-        const r = await getBgJobStatus()
-        setBgStatus(r.data)
-        if (!r.data.running) { clearInterval(bgPollRef.current); bgPollRef.current = null }
-      } catch {}
-    }, 5000)
-  }
-
-  const startDbPoll = () => {
-    if (dbPollRef.current) return
-    dbPollRef.current = setInterval(async () => {
-      try {
-        const r = await getAirportJobStatus()
-        setApDbJob(r.data)
-        if (!r.data?.ap_running) { clearInterval(dbPollRef.current); dbPollRef.current = null }
-      } catch {}
-    }, 10000)
-  }
-
-  useEffect(() => {
-    getBgJobStatus().then(r => { setBgStatus(r.data); if (r.data.running) startBgPoll() }).catch(() => {})
-    getAirportJobStatus().then(r => { setApDbJob(r.data); if (r.data?.ap_running) startDbPoll() }).catch(() => {})
-  }, [])
 
   useEffect(() => {
     getAirports({ limit: 200 }).then(r => setAirports(r.data.data || [])).catch(() => {})
@@ -1201,23 +1170,10 @@ export default function SchedulesPage() {
                   )
                 })()}
 
-                {/* Trạng thái DB job (cron 5 phút) */}
-                {apDbJob?.ap_running && (
-                  <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8, background:'rgba(5,150,105,0.08)', border:'1px solid #059669', fontSize:13, color:'#059669' }}>
-                    ✅ Đang chạy ngầm qua cron — Đợt {apDbJob.ap_round} · {Number(apDbJob.ap_created).toLocaleString('vi-VN')} chuyến
-                    <span style={{ marginLeft:8, fontSize:11, color:'var(--text-muted)' }}>Đóng tab được, cron tự chạy mỗi 5 phút</span>
-                  </div>
-                )}
-                {apDbJob && !apDbJob.ap_running && apDbJob.ap_round > 0 && (
-                  <div style={{ marginBottom:12, padding:'8px 14px', borderRadius:8, background:'rgba(5,150,105,0.08)', border:'1px solid #059669', fontSize:13, color:'#059669' }}>
-                    ✅ Hoàn tất — {Number(apDbJob.ap_created).toLocaleString('vi-VN')} chuyến sau {apDbJob.ap_round} đợt
-                  </div>
-                )}
-
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
                   <button
                     className="btn btn-primary" style={{ background:'#f59e0b', borderColor:'#f59e0b' }}
-                    disabled={apRunning || bgStatus?.running || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
+                    disabled={apRunning || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
                     onClick={async () => {
                       apStopRef.current = false
                       setApRunning(true); setApResult(null); setApProgress({ created: 0, round: 0 })
@@ -1253,31 +1209,6 @@ export default function SchedulesPage() {
                       style={{ background:'rgba(220,38,38,0.08)', color:'#dc2626', border:'1px solid #dc2626', fontSize:13 }}
                     >
                       ⏹ Dừng lại
-                    </button>
-                  )}
-                  {/* Nút chạy ngầm qua DB+cron — đóng tab, tắt máy vẫn chạy */}
-                  {!apRunning && (
-                    <button
-                      className="btn btn-sm"
-                      disabled={apDbJob?.ap_running || !apForm.airport_code || !apForm.start_date || !apForm.end_date}
-                      style={{ background:'rgba(5,150,105,0.08)', color:'#059669', border:'1px solid #059669', fontSize:13, display:'flex', alignItems:'center', gap:5 }}
-                      onClick={async () => {
-                        try {
-                          await setAirportJob({
-                            airport_code:      apForm.airport_code,
-                            start_date:        apForm.start_date,
-                            end_date:          apForm.end_date,
-                            flights_per_route: apForm.flights_per_route,
-                            mode:              apForm.mode,
-                          })
-                          setApDbJob({ ap_running: true, ap_created: 0, ap_round: 0 })
-                          startDbPoll()
-                        } catch(e) {
-                          alert('Lỗi: ' + (e?.response?.data?.error || e.message))
-                        }
-                      }}
-                    >
-                      🌙 Chạy ngầm qua cron
                     </button>
                   )}
                 </div>
