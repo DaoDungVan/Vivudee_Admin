@@ -21,6 +21,15 @@ const matchesCouponSearch = (coupon, keyword) => {
 const fmtCurrency = (n) =>
   n == null ? '—' : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n)
 
+// Trạng thái thực tế — không chỉ dựa vào is_active mà còn xét hết hạn / hết lượt,
+// để admin không thấy "Hoạt động" với coupon thực ra đã hết hạn hoặc hết lượt dùng
+const getCouponRealStatus = (c) => {
+  if (c.is_active === false) return { label: 'Vô hiệu',  badge: 'badge-danger',  Icon: LuX }
+  if (c.expiry_at && new Date(c.expiry_at) < new Date()) return { label: 'Hết hạn', badge: 'badge-warning', Icon: LuHourglass }
+  if (c.usage_limit != null && (c.used_count ?? 0) >= c.usage_limit) return { label: 'Hết lượt', badge: 'badge-warning', Icon: LuTriangleAlert }
+  return { label: 'Hoạt động', badge: 'badge-success', Icon: LuCheck }
+}
+
 export default function CouponsPage() {
   const [data, setData]     = useState([])
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 })
@@ -184,9 +193,14 @@ export default function CouponsPage() {
                         {c.expiry_at ? new Date(c.expiry_at).toLocaleDateString('vi-VN') : '—'}
                       </td>
                       <td>
-                        <span className={`badge ${c.is_active !== false ? 'badge-success' : 'badge-danger'}`} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
-                          {c.is_active !== false ? <><LuCheck size={12}/> Hoạt động</> : <><LuX size={12}/> Vô hiệu</>}
-                        </span>
+                        {(() => {
+                          const st = getCouponRealStatus(c)
+                          return (
+                            <span className={`badge ${st.badge}`} style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
+                              <st.Icon size={12}/> {st.label}
+                            </span>
+                          )
+                        })()}
                       </td>
                       <td>
                         <div className="action-btns">
