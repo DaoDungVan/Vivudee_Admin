@@ -57,9 +57,11 @@ export default function DateChangesPage() {
     getAdminDateChanges({ status: filterStatus, page, limit })
       .then(res => {
         if (requestIdRef.current !== requestId) return
-        const d = res.data?.data
-        setData(Array.isArray(d?.data) ? d.data : [])
-        if (d?.pagination) setPagination(d.pagination)
+        // res.data = { message, data: [...rows], pagination: {...} }
+        // (không phải res.data.data.data — đó là lỗi cũ luôn trả về [])
+        const body = res.data
+        setData(Array.isArray(body?.data) ? body.data : [])
+        if (body?.pagination) setPagination(body.pagination)
       })
       .catch(() => { if (requestIdRef.current === requestId) setError('Không thể tải dữ liệu') })
       .finally(() => { if (requestIdRef.current === requestId) setLoading(false) })
