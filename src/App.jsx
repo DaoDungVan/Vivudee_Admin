@@ -15,6 +15,7 @@ import DateChangesPage from './pages/DateChanges'
 import SystemPage from './pages/System'
 import NewsletterPage from './pages/Newsletter'
 import SchedulesPage from './pages/Schedules'
+import PriceOverridesPage from './pages/PriceOverrides'
 
 function PrivateRoute({ children }) {
   const { token, user } = useAuth()
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="bookings" element={<BookingsPage />} />
             <Route path="coupons" element={<CouponsPage />} />
+            <Route path="price-overrides" element={<PriceOverridesPage />} />
             <Route path="chat" element={<ChatPage />} />
             <Route path="refunds" element={<RefundsPage />} />
             <Route path="date-changes" element={<DateChangesPage />} />

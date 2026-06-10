@@ -5,7 +5,7 @@ import LogoNav from '../assets/imgs/LogoNav.svg'
 import {
   LuLayoutDashboard, LuPlane, LuBuilding2, LuPlaneTakeoff, LuUsers,
   LuTicket, LuTag, LuMessageSquare, LuUndo2, LuSettings, LuX, LuMenu, LuLogOut,
-  LuTriangleAlert, LuCalendarDays, LuMail,
+  LuTriangleAlert, LuCalendarDays, LuMail, LuTrendingUp,
 } from 'react-icons/lu'
 
 const getLocalTZ = () => Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -23,6 +23,7 @@ const navItems = [
   { to: '/users',    icon: <LuUsers size={18}/>,           label: 'Người Dùng' },
   { to: '/bookings', icon: <LuTicket size={18}/>,          label: 'Đặt Vé' },
   { to: '/coupons',  icon: <LuTag size={18}/>,             label: 'Coupon' },
+  { to: '/price-overrides', icon: <LuTrendingUp size={18}/>, label: 'Giá Theo Ngày' },
   { to: '/chat',     icon: <LuMessageSquare size={18}/>,   label: 'Hỗ Trợ Chat' },
   { to: '/refunds',      icon: <LuUndo2 size={18}/>,        label: 'Hoàn Tiền' },
   { to: '/date-changes', icon: <LuCalendarDays size={18}/>, label: 'Đổi Ngày Bay' },

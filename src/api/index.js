@@ -163,6 +163,14 @@ export const getAdminDateChanges  = (params) => api.get('/admin/date-changes', {
 export const approveDateChange    = (code, adminNotes = '') => api.post(`/admin/date-changes/${code}/approve`, { admin_notes: adminNotes })
 export const rejectDateChange     = (code, reason) => api.post(`/admin/date-changes/${code}/reject`, { reason })
 
+// ─── Price Overrides (Season Pricing) ──────────────────────────────────────
+export const getPriceOverrides   = (params) => api.get('/admin/price-overrides', { params })
+export const getPriceOverrideById = (id)    => api.get(`/admin/price-overrides/${id}`)
+export const createPriceOverride = (data)   => api.post('/admin/price-overrides', data)
+export const updatePriceOverride = (id, data) => api.put(`/admin/price-overrides/${id}`, data)
+export const deletePriceOverride = (id)     => api.delete(`/admin/price-overrides/${id}`)
+export const bulkCreatePriceOverrides = (data) => api.post('/admin/price-overrides/bulk', data)
+
 // Chat support
 export const getChatConversations = (params) => api.get('/admin/chat/conversations', { params })
 export const getChatConversationById = (id) => api.get(`/admin/chat/conversations/${id}`)
