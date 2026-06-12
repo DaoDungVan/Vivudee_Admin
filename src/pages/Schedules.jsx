@@ -84,6 +84,9 @@ const getRouteWarning = (airlineCode, depCode, arrCode) => {
 
 const ACTIVE_FLIGHT_STATUSES = new Set(['scheduled', 'delayed', 'boarding', 'departed', 'arrived'])
 
+// "2026-06-15T08:00:00.000Z" → "2026-06-15" (so it can be compared với effectiveDates)
+const getFlightDateOnly = (departureTime) => departureTime ? String(departureTime).slice(0, 10) : ''
+
 // 48 slot mỗi 30 phút: 00:00, 00:30, 01:00, ..., 23:30
 const ALL_DAY_TIMES = Array.from({ length: 48 }, (_, i) => {
   const h = Math.floor(i / 2)
