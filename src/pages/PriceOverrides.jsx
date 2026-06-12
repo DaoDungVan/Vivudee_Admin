@@ -13,7 +13,7 @@ const CURRENT_YEAR = now.getFullYear()
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2]
 
-const emptyForm = { date: '', multiplier: '', reason: '', is_active: true }
+const emptyForm = { date: '', multiplier: '', reason: '', reason_en: '', is_active: true }
 const emptyBulkForm = { from_date: '', to_date: '', multiplier: '', reason: '' }
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('vi-VN') : '—'
@@ -72,6 +72,7 @@ export default function PriceOverridesPage() {
       date: o.date ? o.date.slice(0, 10) : '',
       multiplier: o.multiplier ?? '',
       reason: o.reason || '',
+      reason_en: o.reason_en || '',
       is_active: o.is_active,
     })
     setError('')
@@ -90,12 +91,14 @@ export default function PriceOverridesPage() {
           date: form.date,
           multiplier: Number(form.multiplier),
           reason: form.reason,
+          reason_en: form.reason_en,
           is_active: form.is_active,
         })
       } else {
         await updatePriceOverride(editData.id, {
           multiplier: Number(form.multiplier),
           reason: form.reason,
+          reason_en: form.reason_en,
           is_active: form.is_active,
         })
       }
@@ -256,6 +259,10 @@ export default function PriceOverridesPage() {
               <div className="form-group full">
                 <label className="form-label">Lý do</label>
                 <input className="form-control" value={form.reason} onChange={e => setField('reason', e.target.value)} placeholder="Lễ 30/4 - 1/5" />
+              </div>
+              <div className="form-group full">
+                <label className="form-label">Lý do (English)</label>
+                <input className="form-control" value={form.reason_en} onChange={e => setField('reason_en', e.target.value)} placeholder="Apr 30 - May 1 holiday" />
               </div>
               <div className="form-group full">
                 <label className="form-label" style={{ display:'flex', alignItems:'center', gap:8 }}>
