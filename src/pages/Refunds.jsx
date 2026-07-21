@@ -325,7 +325,7 @@ export default function RefundsPage() {
       {/* Reject Modal */}
       {rejectModal && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setRejectModal(null); setError('') } }}>
-          <div className="modal-box" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">Từ chối hoàn tiền</h3>
             <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
               Mã hoàn vé: <strong>{rejectModal}</strong>
