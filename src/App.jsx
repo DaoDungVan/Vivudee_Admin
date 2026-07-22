@@ -14,6 +14,7 @@ import RefundsPage from './pages/Refunds'
 import DateChangesPage from './pages/DateChanges'
 import SystemPage from './pages/System'
 import NewsletterPage from './pages/Newsletter'
+import ContactMessagesPage from './pages/ContactMessages'
 import SchedulesPage from './pages/Schedules'
 import PriceOverridesPage from './pages/PriceOverrides'
 
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="date-changes" element={<DateChangesPage />} />
             <Route path="system" element={<SystemPage />} />
             <Route path="newsletter" element={<NewsletterPage />} />
+            <Route path="contact-messages" element={<ContactMessagesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

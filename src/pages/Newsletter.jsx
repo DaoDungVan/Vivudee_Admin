@@ -1,24 +1,19 @@
 import { useState, useEffect } from 'react'
-import axios from 'axios'
-
-const api = axios.create({ baseURL: 'https://backend-log-function-2.onrender.com/api' })
-api.interceptors.request.use(cfg => {
-  const token = localStorage.getItem('token')
-  if (token) cfg.headers.Authorization = `Bearer ${token}`
-  return cfg
-})
+// Dùng helper chung của admin (có silent refresh token) thay vì tự tạo axios riêng
+import { getNewsletterSubscribers, sendNewsletter } from '../api'
 
 export default function Newsletter() {
   const [subscribers, setSubscribers] = useState([])
   const [form, setForm]   = useState({ subject: '', title: '', body: '', ctaText: '', ctaUrl: '' })
   const [sending, setSending] = useState(false)
   const [result,  setResult]  = useState(null)
+  const [loadError, setLoadError] = useState('')
   const [tab,     setTab]     = useState('compose') // compose | subscribers
 
   useEffect(() => {
-    api.get('/newsletter/subscribers')
-      .then(r => setSubscribers(r.data.data || []))
-      .catch(() => {})
+    getNewsletterSubscribers()
+      .then(r => { setSubscribers(r.data.data || []); setLoadError('') })
+      .catch(e => setLoadError(e?.response?.data?.error || 'Không tải được danh sách subscriber'))
   }, [])
 
   const activeCount = subscribers.filter(s => s.is_active).length
@@ -32,7 +27,7 @@ export default function Newsletter() {
     setSending(true)
     setResult(null)
     try {
-      const r = await api.post('/newsletter/send', form)
+      const r = await sendNewsletter(form)
       setResult(r.data)
     } catch (e) {
       setResult({ error: e?.response?.data?.error || 'Lỗi khi gửi' })
@@ -46,8 +41,8 @@ export default function Newsletter() {
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
         <div>
           <h1 className="page-title" style={{ margin:0 }}>Newsletter</h1>
-          <p style={{ color:'var(--text-muted)', fontSize:13, margin:'4px 0 0' }}>
-            {activeCount} subscriber đang active / {subscribers.length} tổng
+          <p style={{ color: loadError ? '#dc2626' : 'var(--text-muted)', fontSize:13, margin:'4px 0 0' }}>
+            {loadError || `${activeCount} subscriber đang active / ${subscribers.length} tổng`}
           </p>
         </div>
         <div style={{ display:'flex', gap:8 }}>

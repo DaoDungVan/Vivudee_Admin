@@ -171,6 +171,15 @@ export const updatePriceOverride = (id, data) => api.put(`/admin/price-overrides
 export const deletePriceOverride = (id)     => api.delete(`/admin/price-overrides/${id}`)
 export const bulkCreatePriceOverrides = (data) => api.post('/admin/price-overrides/bulk', data)
 
+// ─── Mail phản hồi (tin nhắn từ form Contact) ──────────────────────────────
+export const getContactMessages      = (params) => api.get('/admin/contact-messages', { params })
+export const updateContactStatus     = (id, status) => api.patch(`/admin/contact-messages/${id}/status`, { status })
+export const replyContactMessage     = (id, reply) => api.post(`/admin/contact-messages/${id}/reply`, { reply })
+
+// ─── Newsletter ────────────────────────────────────────────────────────────
+export const getNewsletterSubscribers = () => api.get('/admin/newsletter/subscribers')
+export const sendNewsletter           = (data) => api.post('/admin/newsletter/send', data)
+
 // Chat support
 export const getChatConversations = (params) => api.get('/admin/chat/conversations', { params })
 export const getChatConversationById = (id) => api.get(`/admin/chat/conversations/${id}`)
